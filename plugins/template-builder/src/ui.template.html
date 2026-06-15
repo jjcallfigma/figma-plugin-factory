@@ -204,7 +204,7 @@
 
   .stack { display: flex; flex-direction: column; gap: var(--spacer-2); }
 
-  /* Inline selection status line (list "New template" + editor "Add a layer"). */
+  /* Inline selection status line (list "New template" + editor "Layers"). */
   .nt-hint {
     padding: 2px 16px 8px;
     color: var(--figma-color-text-secondary);
@@ -241,13 +241,12 @@
   /* Editor content starts 8px below the top — the nav row's symmetric 8px
      padding matches the canonical frame's `py-[8px]` Fields container. */
 
-  /* "Add a layer" sits below its divider with extra breathing room (8px more
-     than the default group top), matching the canonical frame. */
-  #addlayer-group { padding-top: var(--spacer-3); }
-
-  /* Add-mapping button row: 16px sides, 4px top/bottom, full-width button. */
-  #add-mapping-row { padding: var(--spacer-1) var(--spacer-3); }
-  #add-mapping-row fig-button { width: 100%; }
+  /* Single "Layers" group holds the mapped rows, the selection hint, and the
+     full-width "Add layer" button pinned at the bottom. */
+  /* 4px above the selection hint to separate it from the mapped rows. */
+  #selected-layer { margin-top: var(--spacer-1); }
+  #add-layer-row { padding: var(--spacer-1) var(--spacer-3) var(--spacer-2); }
+  #add-layer-row fig-button { width: 100%; }
 
   /* Editor groups all carry a top divider (incl. the first, which follows the
      nav row instead of another group). */
@@ -256,13 +255,28 @@
     padding-top: var(--spacer-2);
   }
 
-  /* With no saved templates, hide the "Use a template" group entirely — only
-     the "New template" group (already first, 16px top) remains. */
-  #view-list.no-templates #saved-group { display: none; }
+  /* Home tab bar (Create / Library). Override fig-tabs' own padding so the tabs
+     align with content (16px sides), sit 16px below the header divider, and leave
+     8px below before the panel's group header. No extra wrapper markup. */
+  #home-tabs { padding: var(--spacer-3) var(--spacer-3) var(--spacer-2); }
+
+  /* "Create template" lives inside the New template group (no list footer):
+     full-width button, 16px sides, 8px above (16px total below the hint). */
+  #create-row { padding: var(--spacer-2) var(--spacer-3) var(--spacer-2); }
+  #create-row fig-button { width: 100%; }
+
+  /* Inline text link (Library empty state). */
+  .link {
+    color: var(--figma-color-text-brand, #0d99ff);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .link:hover { text-decoration: underline; }
 
   /* Saved template rows — bordered name box + edit/delete actions.
-     Mirrors the canonical frame: row px-16 py-4, 8px gap; box h-24 bordered. */
-  #template-list { display: flex; flex-direction: column; }
+     Mirrors the canonical frame: row px-16 py-4, 8px gap; box h-24 bordered.
+     Extra 4px above the first row gives "Select a template" more breathing room. */
+  #template-list { display: flex; flex-direction: column; padding-top: var(--spacer-1); }
   .t-row {
     display: flex;
     align-items: center;
@@ -342,19 +356,28 @@
 
   <!-- ============ STATE 1 — Discovery ============ -->
   <div id="view-list">
-    <fig-group id="new-template-group" name="New template">
-      <div id="new-template-hint" class="nt-hint"></div>
-    </fig-group>
+    <fig-tabs id="home-tabs" value="create">
+      <fig-tab value="create" content="#tab-create" selected>Create</fig-tab>
+      <fig-tab value="library" content="#tab-library">Library</fig-tab>
+    </fig-tabs>
 
-    <fig-group id="saved-group" name="Use a template">
-      <div id="template-list"></div>
-    </fig-group>
+    <div id="tab-create" class="tab-panel">
+      <fig-group id="new-template-group" name="New template">
+        <div id="new-template-hint" class="nt-hint"></div>
+        <div id="create-row">
+          <fig-button id="create-btn" variant="primary" disabled>Create template</fig-button>
+        </div>
+      </fig-group>
+    </div>
 
-    <fig-footer borderless>
-      <div class="footer-row">
-        <fig-button id="create-btn" variant="primary" disabled>Create a template</fig-button>
-      </div>
-    </fig-footer>
+    <div id="tab-library" class="tab-panel">
+      <fig-group id="saved-group" name="Select a template">
+        <div id="template-list"></div>
+        <div id="library-empty" class="hint" hidden>
+          No templates available. <a id="empty-create-link" class="link" href="#">Create a template</a>
+        </div>
+      </fig-group>
+    </div>
   </div>
 
   <!-- ============ STATE 2 — Creation Mode ============ -->
@@ -375,20 +398,17 @@
       </fig-field>
     </fig-group>
 
-    <fig-group id="mapping-group" name="Layer mapping" hidden>
+    <fig-group id="layers-group" name="Layers">
       <div id="mapping-list"></div>
-    </fig-group>
-
-    <fig-group id="addlayer-group" name="Add a layer">
       <div id="selected-layer" class="nt-hint"></div>
-      <div id="add-mapping-row" hidden>
-        <fig-button id="add-mapping" variant="secondary">Add mapping</fig-button>
+      <div id="add-layer-row">
+        <fig-button id="add-mapping" variant="secondary" disabled>Add layer</fig-button>
       </div>
     </fig-group>
 
-    <fig-footer borderless>
+    <fig-footer id="create-footer" borderless hidden>
       <div class="footer-row">
-        <fig-button id="save-template" variant="primary" disabled>Save template</fig-button>
+        <fig-button id="save-template" variant="primary">Save template</fig-button>
       </div>
     </fig-footer>
   </div>
@@ -403,28 +423,8 @@
       <div id="use-form"></div>
     </fig-group>
 
-    <fig-group>
-      <fig-header borderless><h3>Output</h3></fig-header>
-      <fig-field direction="horizontal" columns="thirds">
-        <label for="copy-count">Copies</label>
-        <fig-dropdown id="copy-count" value="3">
-          <option value="1">1</option>
-          <option value="3">3</option>
-          <option value="6">6</option>
-        </fig-dropdown>
-      </fig-field>
-      <fig-field direction="horizontal" columns="thirds">
-        <label for="layout">Layout</label>
-        <fig-dropdown id="layout" value="row">
-          <option value="row">Row</option>
-          <option value="grid">Grid</option>
-        </fig-dropdown>
-      </fig-field>
-    </fig-group>
-
     <fig-footer borderless>
       <div class="footer-actions">
-        <fig-button id="sample-content" variant="secondary">Sample content</fig-button>
         <fig-button id="generate" variant="primary">Generate</fig-button>
         <fig-button id="back" variant="secondary">Back</fig-button>
       </div>
@@ -557,7 +557,7 @@
 
   function renderTemplates(list, root) {
     clear(els.templateList);
-    els.viewList.classList.toggle('no-templates', list.length === 0);
+    els.libraryEmpty.hidden = list.length > 0;
     list.forEach(function (t) {
       var row = document.createElement('div');
       row.className = 't-row';
@@ -601,11 +601,11 @@
     if (inside) {
       els.selectedLayer.textContent = 'Selected layer: ' + context.layerName;
       els.selectedLayer.classList.add('selected');
-      els.addMappingRow.hidden = false;
+      els.addMapping.removeAttribute('disabled');
     } else {
       els.selectedLayer.textContent = 'Select a layer inside the template.';
       els.selectedLayer.classList.remove('selected');
-      els.addMappingRow.hidden = true;
+      els.addMapping.setAttribute('disabled', '');
     }
     requestAnimationFrame(reportPanelHeight);
   }
@@ -687,9 +687,8 @@
   function renderMappings(mappings) {
     draftMappingCount = mappings.length;
     clear(els.mappingList);
-    els.mappingGroup.hidden = mappings.length === 0;
-    if (mappings.length > 0) els.saveTemplate.removeAttribute('disabled');
-    else els.saveTemplate.setAttribute('disabled', '');
+    // Footer is dynamic: Save template only appears once a layer is mapped.
+    els.createFooter.hidden = mappings.length === 0;
     mappings.forEach(function (m) {
       var row = document.createElement('div');
       row.className = 'map-row';
@@ -718,7 +717,7 @@
 
   /* ---------- State 3: use / dynamic form ---------- */
 
-  function buildField(mapping) {
+  function buildField(mapping, editing) {
     var field = document.createElement('fig-field');
     field.setAttribute('direction', 'horizontal');
     field.setAttribute('columns', 'thirds');
@@ -728,18 +727,24 @@
     label.setAttribute('for', inputId);
     label.textContent = mapping.layerName;
 
+    var init = mapping.initial || {};
     var control;
     switch (mapping.control) {
       case 'longtext':
         control = document.createElement('fig-input-text');
         control.setAttribute('multiline', 'true');
+        control.setAttribute('placeholder', 'Enter long text...');
+        // In Update mode, pre-fill with the selected output's current text.
+        if (editing && init.text != null && init.text !== '') setFieldValue(control, init.text);
         break;
       case 'number':
         control = document.createElement('fig-input-number');
+        if (init.text != null && init.text !== '') setFieldValue(control, init.text);
         break;
       case 'color':
         control = document.createElement('fig-input-color');
-        control.setAttribute('value', '#1E1E1E');
+        // Inherit the layer's actual fill color (falls back to a neutral dark).
+        control.setAttribute('value', init.color || '#1E1E1E');
         control.setAttribute('text', 'true');
         control.setAttribute('alpha', 'true');
         control.setAttribute('picker', 'figma');
@@ -759,7 +764,7 @@
           opt.textContent = v === 'show' ? 'Show' : 'Hide';
           control.appendChild(opt);
         });
-        control.setAttribute('value', 'show');
+        control.setAttribute('value', init.visible === false ? 'hide' : 'show');
         break;
       case 'variant':
         control = document.createElement('fig-dropdown');
@@ -769,12 +774,15 @@
           opt.textContent = o;
           control.appendChild(opt);
         });
-        if (mapping.variantOptions && mapping.variantOptions.length) {
-          setFieldValue(control, mapping.variantOptions[0]);
-        }
+        var variantValue = init.variant ||
+          (mapping.variantOptions && mapping.variantOptions.length ? mapping.variantOptions[0] : null);
+        if (variantValue) setFieldValue(control, variantValue);
         break;
       default: // text
         control = document.createElement('fig-input-text');
+        control.setAttribute('placeholder', 'Enter short text...');
+        // In Update mode, pre-fill with the selected output's current text.
+        if (editing && init.text != null && init.text !== '') setFieldValue(control, init.text);
     }
     control.id = inputId;
     control.setAttribute('data-mapping-id', mapping.id);
@@ -797,14 +805,14 @@
     };
   }
 
-  function renderUseForm(template, sourceMissing) {
+  function renderUseForm(template, sourceMissing, editing) {
     currentTemplate = template;
     imageBytes = {};
     els.useTitle.textContent = template.name;
     els.useMissing.hidden = !sourceMissing;
     clear(els.useForm);
     template.mappings.forEach(function (m) {
-      els.useForm.appendChild(buildField(m));
+      els.useForm.appendChild(buildField(m, editing));
     });
     if (sourceMissing) {
       els.generate.setAttribute('disabled', '');
@@ -835,66 +843,12 @@
     return values;
   }
 
-  /* ---------- Sample content engine (semantic heuristics) ---------- */
+  /* ---------- output targeting: Generate vs Update ---------- */
 
-  function sampleText(name, control) {
-    var n = (name || '').toLowerCase();
-    if (/title|heading|headline/.test(n)) return 'Build something remarkable';
-    if (/subtitle|tagline|eyebrow/.test(n)) return 'A simpler way to ship your best work';
-    if (/cta|button|action/.test(n)) return 'Get started';
-    if (/email/.test(n)) return 'alex@example.com';
-    if (/role|position|job/.test(n)) return 'Product Designer';
-    if (/name|author|person/.test(n)) return 'Alex Rivera';
-    if (/price|cost|amount|total/.test(n)) return '$49';
-    if (/date|time/.test(n)) return 'Jun 14, 2026';
-    if (/quote|testimonial/.test(n)) return '“This changed how our team works.”';
-    if (/label|tag|badge|category/.test(n)) return 'New';
-    if (control === 'longtext' || /body|description|paragraph|summary|detail|copy/.test(n)) {
-      return 'Template Lab keeps your layers editable and your team fast. Map once, then generate clean variations in seconds.';
-    }
-    return 'Sample text';
-  }
-
-  function sampleNumber(name) {
-    var n = (name || '').toLowerCase();
-    if (/price|cost|amount|total/.test(n)) return '49';
-    if (/percent|rate|discount|%/.test(n)) return '25';
-    if (/year/.test(n)) return '2026';
-    if (/age/.test(n)) return '32';
-    if (/qty|quantity|count|items|stock/.test(n)) return '12';
-    if (/rating|score|stars/.test(n)) return '5';
-    return '42';
-  }
-
-  function sampleColor(name) {
-    var n = (name || '').toLowerCase();
-    if (/bg|background|surface|fill/.test(n)) return '#F5F7FA';
-    if (/accent|primary|brand|cta|button|link|highlight/.test(n)) return '#0D99FF';
-    if (/success|positive|go/.test(n)) return '#14AE5C';
-    if (/warn|alert|error|danger|stop/.test(n)) return '#F24822';
-    if (/text|title|label|heading/.test(n)) return '#1E1E1E';
-    return '#8A8A8A';
-  }
-
-  function applySampleContent() {
-    if (!currentTemplate) return;
-    currentTemplate.mappings.forEach(function (m) {
-      var el = els.useForm.querySelector('[data-mapping-id="' + m.id + '"]');
-      if (!el) return;
-      if (m.control === 'text' || m.control === 'longtext') {
-        setFieldValue(el, sampleText(m.layerName, m.control));
-      } else if (m.control === 'number') {
-        setFieldValue(el, sampleNumber(m.layerName));
-      } else if (m.control === 'color') {
-        setFieldValue(el, sampleColor(m.layerName));
-      } else if (m.control === 'visible') {
-        setFieldValue(el, 'show');
-      } else if (m.control === 'variant' && m.variantOptions && m.variantOptions.length) {
-        var idx = Math.floor(Math.random() * m.variantOptions.length);
-        setFieldValue(el, m.variantOptions[idx]);
-      }
-    });
-    requestAnimationFrame(reportPanelHeight);
+  // When a generated artifact this tool produced is selected on the canvas, the
+  // primary action updates it in place instead of creating a new one.
+  function setGenerateLabel(outputSelected) {
+    if (els.generate) els.generate.textContent = outputSelected ? 'Update' : 'Generate';
   }
 
   /* ---------- message handling ---------- */
@@ -916,8 +870,11 @@
     } else if (msg.type === 'selectionContext') {
       renderContext(msg.context);
     } else if (msg.type === 'showUse') {
-      renderUseForm(msg.template, msg.sourceMissing);
+      renderUseForm(msg.template, msg.sourceMissing, msg.outputSelected);
+      setGenerateLabel(msg.outputSelected);
       show('use');
+    } else if (msg.type === 'useSelection') {
+      setGenerateLabel(msg.outputSelected);
     }
   };
 
@@ -933,36 +890,45 @@
     customElements.whenDefined('fig-input-text'),
     customElements.whenDefined('fig-input-number'),
     customElements.whenDefined('fig-input-color'),
+    customElements.whenDefined('fig-fill-picker'),
+    customElements.whenDefined('fig-chit'),
     customElements.whenDefined('fig-input-file'),
     customElements.whenDefined('fig-switch'),
+    customElements.whenDefined('fig-tabs'),
+    customElements.whenDefined('fig-tab'),
     customElements.whenDefined('fig-icon')
   ]).then(function () {
     els.viewList = document.getElementById('view-list');
     els.viewCreate = document.getElementById('view-create');
     els.viewUse = document.getElementById('view-use');
+    els.homeTabs = document.getElementById('home-tabs');
     els.templateList = document.getElementById('template-list');
+    els.libraryEmpty = document.getElementById('library-empty');
+    els.emptyCreateLink = document.getElementById('empty-create-link');
     els.newTemplateHint = document.getElementById('new-template-hint');
     els.createBtn = document.getElementById('create-btn');
     els.backNav = document.getElementById('back-nav');
     els.navTitle = document.getElementById('nav-title');
     els.templateName = document.getElementById('template-name');
     els.selectedLayer = document.getElementById('selected-layer');
-    els.addMappingRow = document.getElementById('add-mapping-row');
     els.addMapping = document.getElementById('add-mapping');
-    els.mappingGroup = document.getElementById('mapping-group');
     els.mappingList = document.getElementById('mapping-list');
+    els.createFooter = document.getElementById('create-footer');
     els.saveTemplate = document.getElementById('save-template');
     els.useTitle = document.getElementById('use-title');
     els.useMissing = document.getElementById('use-missing');
     els.useForm = document.getElementById('use-form');
-    els.copyCount = document.getElementById('copy-count');
-    els.layout = document.getElementById('layout');
-    els.sampleContent = document.getElementById('sample-content');
     els.generate = document.getElementById('generate');
     els.back = document.getElementById('back');
 
     els.createBtn.addEventListener('click', function () {
       send({ type: 'startCreate' });
+    });
+    // Library empty state → jump to the Create tab.
+    els.emptyCreateLink.addEventListener('click', function (e) {
+      e.preventDefault();
+      var createTab = document.querySelector('#home-tabs fig-tab[value="create"]');
+      if (createTab) createTab.click();
     });
     els.addMapping.addEventListener('click', function () {
       // The mapping's type is inferred in the sandbox and editable per-row.
@@ -976,7 +942,6 @@
     els.backNav.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goBack(); }
     });
-    els.sampleContent.addEventListener('click', applySampleContent);
     els.back.addEventListener('click', function () {
       send({ type: 'backToList' });
     });
@@ -985,9 +950,7 @@
       send({
         type: 'generate',
         templateId: currentTemplate.id,
-        values: collectValues(),
-        count: parseInt(els.copyCount.value, 10) || 1,
-        layout: els.layout.value === 'grid' ? 'grid' : 'row'
+        values: collectValues()
       });
     });
 

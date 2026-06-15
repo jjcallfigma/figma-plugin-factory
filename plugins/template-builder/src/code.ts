@@ -108,8 +108,6 @@ type UiToCodeMessage =
       type: 'generate';
       templateId: string;
       values: Record<string, FormValue>;
-      count: number;
-      layout: 'row' | 'grid';
     };
 
 type View = 'list' | 'create' | 'use';
@@ -118,6 +116,8 @@ let templates: Template[] = [];
 let view: View = 'list';
 let draft: Draft | null = null;
 let isWorking = false;
+/** Template currently shown in Use Mode — drives output-targeting detection. */
+let useTemplateId: string | null = null;
 
 function setPageRelaunchForDiscovery(): void {
   figma.currentPage.setRelaunchData({ edit: 'Open this tool' });
@@ -158,6 +158,17 @@ const hexToRgb = (hex: string): RGB => {
   const b = parseInt(clean.slice(4, 6), 16) / 255;
   return { r, g, b };
 };
+
+function rgbToHex(c: RGB, opacity?: number): string {
+  const to = (n: number): string => {
+    const v = Math.max(0, Math.min(255, Math.round(n * 255)));
+    const s = v.toString(16);
+    return s.length === 1 ? '0' + s : s;
+  };
+  let hex = '#' + to(c.r) + to(c.g) + to(c.b);
+  if (typeof opacity === 'number' && opacity < 1) hex += to(opacity);
+  return hex;
+}
 
 function isValidRoot(node: BaseNode | null | undefined): node is SceneNode {
   return !!node && VALID_ROOT_TYPES.indexOf(node.type) !== -1;
@@ -282,6 +293,7 @@ async function getSelectionContext(): Promise<SelectionContext> {
 
 function pushList(): void {
   view = 'list';
+  useTemplateId = null;
   figma.ui.postMessage({
     type: 'showList',
     templates: templates.map((t) => ({
@@ -481,6 +493,68 @@ function getTemplate(id: string): Template | undefined {
   return undefined;
 }
 
+/** A generated container this tool produced (tagged via plugin data). */
+function isToolOutput(node: SceneNode | null | undefined): node is FrameNode {
+  return (
+    !!node &&
+    node.type === 'FRAME' &&
+    node.getPluginData('toolId') === TOOL_ID
+  );
+}
+
+/** The selected output belonging to `templateId`, if one is selected. */
+function getSelectedOutput(templateId: string): FrameNode | null {
+  const sel = figma.currentPage.selection[0];
+  if (isToolOutput(sel) && sel.getPluginData('templateId') === templateId) {
+    return sel;
+  }
+  return null;
+}
+
+/** Current property values from the source node, used to seed the Use form. */
+type InitialValue = {
+  /** Live characters (text/number controls → number value; text → placeholder). */
+  text?: string;
+  /** Live fill color as #RRGGBB(AA). */
+  color?: string;
+  /** Live variant option for the mapping's variant property. */
+  variant?: string;
+  /** Live visibility. */
+  visible?: boolean;
+};
+
+function readNodeValue(root: SceneNode, m: Mapping): InitialValue {
+  const out: InitialValue = {};
+  const node = resolveByPath(root, m.path);
+  if (!node) return out;
+  if (
+    (m.control === 'text' || m.control === 'longtext' || m.control === 'number') &&
+    node.type === 'TEXT'
+  ) {
+    out.text = (node as TextNode).characters;
+  }
+  if (m.control === 'color' && nodeHasFills(node) && node.fills !== figma.mixed) {
+    const fills = node.fills as ReadonlyArray<Paint>;
+    for (const f of fills) {
+      if (f.type === 'SOLID') {
+        out.color = rgbToHex(f.color, f.opacity);
+        break;
+      }
+    }
+  }
+  if (m.control === 'variant' && node.type === 'INSTANCE' && m.variantProperty) {
+    try {
+      const props = (node as InstanceNode).componentProperties;
+      const def = props[m.variantProperty];
+      if (def && typeof def.value === 'string') out.variant = def.value;
+    } catch {
+      // ignore — fall back to the first option in the UI
+    }
+  }
+  if (m.control === 'visible') out.visible = node.visible;
+  return out;
+}
+
 async function applyValue(
   target: SceneNode,
   mapping: Mapping,
@@ -501,6 +575,8 @@ async function applyValue(
     value.control !== 'visible' &&
     target.type === 'TEXT'
   ) {
+    // Empty input = keep the source text (text fields show it as a placeholder).
+    if (value.value === '') return;
     const text = target as TextNode;
     if (text.characters.length > 0) {
       const fonts = text.getRangeAllFontNames(0, text.characters.length);
@@ -560,8 +636,6 @@ async function applyValue(
 async function generate(
   templateId: string,
   values: Record<string, FormValue>,
-  count: number,
-  layout: 'row' | 'grid',
 ): Promise<void> {
   if (isWorking) return;
   isWorking = true;
@@ -577,66 +651,93 @@ async function generate(
       return;
     }
 
-    const gap = 32;
-    const container = figma.createFrame();
+    // Output targeting: if a matching generated artifact is selected, update it
+    // in place; otherwise create a new container (never touching other outputs).
+    const existing = getSelectedOutput(template.id);
+
+    const container = existing || figma.createFrame();
     container.name = 'Generated / ' + template.name;
     container.layoutMode = 'HORIZONTAL';
-    container.layoutWrap = layout === 'grid' ? 'WRAP' : 'NO_WRAP';
     container.primaryAxisSizingMode = 'AUTO';
     container.counterAxisSizingMode = 'AUTO';
-    container.itemSpacing = gap;
-    container.counterAxisSpacing = gap;
     container.clipsContent = false;
     container.fills = [];
 
-    const clones: SceneNode[] = [];
-    for (let i = 0; i < count; i++) {
-      const clone = (root as SceneNode).clone();
-      for (let m = 0; m < template.mappings.length; m++) {
-        const mapping = template.mappings[m];
-        const target = resolveByPath(clone, mapping.path);
-        if (target) {
-          await applyValue(target, mapping, values[mapping.id]);
-        }
+    // Updating in place: clear the previous copy before rebuilding.
+    if (existing) {
+      const prev = existing.children.slice();
+      for (let i = 0; i < prev.length; i++) prev[i].remove();
+    }
+
+    // One copy per generate.
+    const clone = (root as SceneNode).clone();
+    for (let m = 0; m < template.mappings.length; m++) {
+      const mapping = template.mappings[m];
+      const target = resolveByPath(clone, mapping.path);
+      if (target) {
+        await applyValue(target, mapping, values[mapping.id]);
       }
-      container.appendChild(clone);
-      clones.push(clone);
     }
+    container.appendChild(clone);
 
-    // Grid wrapping: pin the primary axis width so rows wrap into columns.
-    // An AUTO primary axis hugs content and would ignore the resize, so switch
-    // to FIXED first, then size to the desired column count.
-    if (layout === 'grid' && clones.length > 0) {
-      const cellW = clones[0].width;
-      const cols = Math.min(3, count);
-      const targetW = cols * cellW + (cols - 1) * gap;
-      container.primaryAxisSizingMode = 'FIXED';
-      container.resize(Math.max(cellW, targetW), container.height);
-    }
-
-    // Position to the right of the source design (or viewport center if unknown).
-    const bounds = (root as SceneNode).absoluteBoundingBox;
-    if (bounds) {
-      container.x = bounds.x + bounds.width + 100;
-      container.y = bounds.y;
-    } else {
-      container.x = figma.viewport.center.x - container.width / 2;
-      container.y = figma.viewport.center.y - container.height / 2;
+    // Position new containers to the right of the source design (or viewport
+    // center if unknown). Updated-in-place containers keep their position.
+    if (!existing) {
+      const bounds = (root as SceneNode).absoluteBoundingBox;
+      if (bounds) {
+        container.x = bounds.x + bounds.width + 100;
+        container.y = bounds.y;
+      } else {
+        container.x = figma.viewport.center.x - container.width / 2;
+        container.y = figma.viewport.center.y - container.height / 2;
+      }
     }
 
     container.setPluginData('toolId', TOOL_ID);
-    container.setRelaunchData({ edit: 'Open this tool' });
+    container.setPluginData('templateId', template.id);
+    container.setRelaunchData({ edit: 'Edit & update this output' });
 
     figma.currentPage.selection = [container];
     figma.viewport.scrollAndZoomIntoView([container]);
-    figma.notify(
-      'Generated ' + count + ' copy' + (count === 1 ? '' : 'ies') + '.',
-    );
+    figma.notify(existing ? 'Updated the selected output.' : 'Generated a copy.');
   } catch (err) {
     figma.notify('Could not generate: ' + (err as Error).message);
   } finally {
     isWorking = false;
   }
+}
+
+/** Open a template in Use Mode. When a matching generated output is selected,
+ *  seed the form from that output's current values and report it as selected so
+ *  the primary button reads "Update" — ready to edit and update in place. */
+async function openTemplateUse(template: Template): Promise<void> {
+  view = 'use';
+  useTemplateId = template.id;
+  const root = await figma.getNodeByIdAsync(template.rootId);
+  const live =
+    root && !root.removed && isValidRoot(root) ? (root as SceneNode) : null;
+  // Prefer the selected output's clone as the seed source so Update reflects the
+  // values currently in that copy; otherwise fall back to the source design.
+  const output = getSelectedOutput(template.id);
+  const seed =
+    output && output.children.length > 0
+      ? (output.children[0] as SceneNode)
+      : live;
+  const mappings = template.mappings.map((m) => ({
+    ...m,
+    initial: seed ? readNodeValue(seed, m) : {},
+  }));
+  figma.ui.postMessage({
+    type: 'showUse',
+    template: {
+      id: template.id,
+      name: template.name,
+      rootName: template.rootName,
+      mappings,
+    },
+    sourceMissing: !live,
+    outputSelected: !!output,
+  });
 }
 
 /* ---------- messages ---------- */
@@ -650,6 +751,16 @@ figma.ui.onmessage = async (msg: UiToCodeMessage) => {
 
   if (msg.type === 'ready') {
     await loadTemplates();
+    // If the plugin was launched (via relaunch button or with a selection) on a
+    // generated output, open its template straight into the Update state.
+    const sel = figma.currentPage.selection[0];
+    if (isToolOutput(sel)) {
+      const template = getTemplate(sel.getPluginData('templateId'));
+      if (template) {
+        await openTemplateUse(template);
+        return;
+      }
+    }
     pushList();
     return;
   }
@@ -711,18 +822,7 @@ figma.ui.onmessage = async (msg: UiToCodeMessage) => {
   if (msg.type === 'openTemplate') {
     const template = getTemplate(msg.templateId);
     if (!template) return;
-    view = 'use';
-    const root = await figma.getNodeByIdAsync(template.rootId);
-    figma.ui.postMessage({
-      type: 'showUse',
-      template: {
-        id: template.id,
-        name: template.name,
-        rootName: template.rootName,
-        mappings: template.mappings,
-      },
-      sourceMissing: !root || root.removed,
-    });
+    await openTemplateUse(template);
     return;
   }
 
@@ -745,7 +845,7 @@ figma.ui.onmessage = async (msg: UiToCodeMessage) => {
   }
 
   if (msg.type === 'generate') {
-    await generate(msg.templateId, msg.values, msg.count, msg.layout);
+    await generate(msg.templateId, msg.values);
     return;
   }
 };
@@ -756,6 +856,11 @@ figma.on('selectionchange', () => {
   } else if (view === 'create') {
     void getSelectionContext().then((context) => {
       figma.ui.postMessage({ type: 'selectionContext', context });
+    });
+  } else if (view === 'use' && useTemplateId) {
+    figma.ui.postMessage({
+      type: 'useSelection',
+      outputSelected: !!getSelectedOutput(useTemplateId),
     });
   }
 });
