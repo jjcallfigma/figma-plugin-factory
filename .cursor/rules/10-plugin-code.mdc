@@ -206,6 +206,10 @@ Without this, the plugin opens but ignores the relaunch context.
 
 Wrap mutations in try/catch and surface failures via `figma.notify`. Never let mutations fail silently.
 
+## Final step after any edit
+
+Always run **`npm run build`** inside `{pluginRoot}` as the **last step** before telling the user you're done. That regenerates `code.js` and `ui.html`. Figma does not pick up changes until the user re-runs the tool.
+
 ## What NOT to do
 
 - **Don't** `currentOutput.remove()` on every `generate` — that deletes previous charts/outputs when the user wanted a new one alongside.

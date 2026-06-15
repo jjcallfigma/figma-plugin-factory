@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>GenTool Comparison</title>
+<style>
+<!-- FIGUI3_CSS -->
+</style>
+<style>
+  /* FigUI3 vendor CSS sets html { height: 100% } which pins the document to
+     the iframe and breaks shrink-to-fit. Override to auto so the
+     ResizeObserver on #plugin-root sees real size changes.
+     See docs/08-figui3-ui.md > Auto-resize. */
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: auto;
+    min-height: 0;
+  }
+
+  body {
+    display: block;
+  }
+
+  #plugin-root {
+    height: auto;
+  }
+
+  /* Generative tools panel spacing — copy with tool UI; see docs/08-figui3-ui.md */
+  /* Every section reserves 8px above and below its content so dividers
+     (between sections, above the footer) have symmetric breathing room. */
+  fig-group {
+    margin-bottom: 0;
+    padding-bottom: var(--spacer-2);
+  }
+
+  fig-group + fig-group {
+    box-shadow: inset 0 1px 0 0 var(--figma-color-border);
+    padding-top: var(--spacer-2);
+  }
+
+  /* First section sits 12px below the panel top — gives the first title room
+     to breathe and matches the visual weight of later section dividers. */
+  body > fig-group:first-of-type,
+  #plugin-root > fig-group:first-of-type {
+    padding-top: 12px;
+  }
+
+  fig-group > fig-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    min-height: 0;
+    padding: var(--spacer-1) var(--spacer-3) 0;
+    margin: 0;
+  }
+
+  fig-group + fig-group > fig-header {
+    padding-top: var(--spacer-1);
+  }
+
+  fig-group > fig-header h3 {
+    font-weight: var(--body-medium-fontWeight);
+    line-height: var(--body-medium-lineHeight);
+    margin: 0;
+    padding-bottom: var(--spacer-1);
+  }
+
+  /* Footer spec: 16px sides, 12px top/bottom, 8px between buttons.
+     ALWAYS wrap buttons in <div class="footer-actions"> so padding stays
+     identical whether there's 1 or N buttons.
+     See docs/08-figui3-ui.md > Footer spec. */
+  /* Higher specificity than vendor's `fig-footer[borderless]` (box-shadow:none).
+     Spec: 12px top + bottom, 16px sides, 8px between buttons. */
+  fig-footer,
+  fig-footer[borderless] {
+    box-shadow: inset 0 1px 0 var(--figma-color-border);
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    min-height: 0;
+    padding: 12px 16px;
+  }
+
+  fig-footer::before {
+    display: none;
+  }
+
+  .footer-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .footer-actions fig-button {
+    width: 100%;
+    margin: 0;
+  }
+
+  /* === Color picker (keep if the tool uses fig-input-color) ===
+     Required for Figma-style popover in 240px iframes. Do not remove or replace
+     with ad-hoc rules (no min-width on .fig-fill-picker-input-mode, no width:100%
+     on the mode dropdown). See docs/08-figui3-ui.md > Color picker. */
+  dialog.fig-fill-picker-dialog {
+    width: 240px;
+    max-width: 240px;
+    min-width: 240px;
+    max-height: none;
+    height: max-content;
+    overflow: visible;
+  }
+
+  dialog.fig-fill-picker-dialog .fig-fill-picker-sliders fig-slider {
+    width: 100%;
+    display: flex;
+  }
+
+  dialog.fig-fill-picker-dialog .fig-fill-picker-sliders fig-slider .fig-slider-input-container {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  dialog.fig-fill-picker-dialog fig-field.fig-fill-picker-inputs[direction="horizontal"] {
+    --fig-field-left-padding: 0;
+    --fig-field-label-ratio: calc(3.5rem + var(--spacer-3));
+    --fig-field-input-ratio: 1fr;
+  }
+
+  dialog.fig-fill-picker-dialog fig-field.fig-fill-picker-inputs > .fig-fill-picker-input-mode {
+    width: 3.5rem;
+    max-width: 100%;
+    justify-self: center;
+  }
+
+  dialog.fig-fill-picker-dialog fig-field.fig-fill-picker-inputs > .fig-fill-picker-input-fields {
+    min-width: 0;
+  }
+
+  /* Collapsible rows — animate height open/closed. The ResizeObserver on
+     #plugin-root follows each frame so the panel glides in sync. */
+  .collapsible {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 200ms ease, opacity 160ms ease;
+    opacity: 1;
+  }
+  .collapsible > .collapsible-inner {
+    overflow: hidden;
+    min-height: 0;
+  }
+  .collapsible[collapsed] {
+    grid-template-rows: 0fr;
+    opacity: 0;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="plugin-root">
+  <!-- Tool UI goes here: fig-group sections + fig-footer with Generate button.
+       Generator init: Generate → { type: 'generate' }; control change → regenerate
+       only when outputSelected (docs/07 > Output targeting). Generate must not
+       delete existing tool outputs when creating a new frame.
+
+       Generator footer pattern (always use this shape):
+
+       <fig-footer borderless>
+         <div class="footer-actions">
+           <fig-button id="run" variant="primary">Generate</fig-button>
+         </div>
+       </fig-footer>
+
+       Color control (when needed):
+
+       <fig-input-color id="accent" value="#0D99FF" text="true" alpha="true" picker="figma"></fig-input-color>
+
+       See docs/08-figui3-ui.md (Footer spec, Color picker). -->
+</div>
+
+<script>
+<!-- FIGUI3_JS -->
+</script>
+<script>
+  // Auto-resize panel to hug content. See docs/08-figui3-ui.md > Auto-resize.
+  // measurePanelHeight + watchColorPickerDialog keep the iframe tall enough when
+  // the Figma color popover extends below #plugin-root (docs/08 > Color picker).
+  var lastReportedHeight = 0;
+  var resizeRaf = 0;
+
+  function reportHeight(height) {
+    var h = Math.ceil(height);
+    if (h && h !== lastReportedHeight) {
+      lastReportedHeight = h;
+      parent.postMessage({ pluginMessage: { type: 'resize', height: h } }, '*');
+    }
+  }
+
+  function measurePanelHeight() {
+    var root = document.getElementById('plugin-root');
+    if (!root) return 0;
+    var height = Math.ceil(root.getBoundingClientRect().height);
+    var dialog = document.querySelector('dialog.fig-fill-picker-dialog[open]');
+    if (dialog) {
+      var dialogBottom = Math.ceil(dialog.getBoundingClientRect().bottom + 12);
+      height = Math.max(height, dialogBottom);
+    }
+    return height;
+  }
+
+  function reportPanelHeight() {
+    reportHeight(measurePanelHeight());
+  }
+
+  (function setupAutoResize() {
+    var root = document.getElementById('plugin-root');
+    if (!root || typeof ResizeObserver === 'undefined') return;
+    var observer = new ResizeObserver(function () {
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(function () {
+        resizeRaf = 0;
+        reportPanelHeight();
+      });
+    });
+    observer.observe(root);
+  })();
+
+  (function watchColorPickerDialog() {
+    if (typeof MutationObserver === 'undefined') return;
+    var observer = new MutationObserver(function () {
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(function () {
+        resizeRaf = 0;
+        reportPanelHeight();
+      });
+    });
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['open'],
+    });
+  })();
+</script>
+
+</body>
+</html>

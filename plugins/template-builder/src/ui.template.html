@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Template Lab</title>
+<style>
+<!-- FIGUI3_CSS -->
+</style>
+<style>
+  /* FigUI3 vendor CSS sets html { height: 100% } which pins the document to
+     the iframe and breaks shrink-to-fit. Override to auto so the
+     ResizeObserver on #plugin-root sees real size changes.
+     See docs/08-figui3-ui.md > Auto-resize. */
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: auto;
+    min-height: 0;
+    width: 100%;
+  }
+
+  /* The panel auto-resizes to hug its content, so the document itself never
+     needs a scrollbar. During a resize the new content can briefly exceed the
+     old iframe height for a frame before figma.ui.resize catches up — that's
+     the "flash" of the scrollbar. Hiding the document scrollbar removes it
+     without clipping (overflow stays visible so the color-picker popover still
+     shows) and without affecting inner scroll areas (dropdown lists keep their
+     own scrollbars). */
+  html {
+    scrollbar-width: none;
+  }
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+
+  body {
+    display: block;
+    width: 100%;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  #plugin-root {
+    height: auto;
+    width: 100%;
+  }
+
+  /* Sections, fields and footers flex to whatever width the panel is set to. */
+  fig-group,
+  fig-field,
+  fig-footer {
+    width: 100%;
+  }
+
+  /* Generative tools panel spacing — copy with tool UI; see docs/08-figui3-ui.md */
+  /* Every section reserves 8px above and below its content so dividers
+     (between sections, above the footer) have symmetric breathing room. */
+  fig-group {
+    margin-bottom: 0;
+    padding-bottom: var(--spacer-2);
+  }
+
+  fig-group + fig-group {
+    box-shadow: inset 0 1px 0 0 var(--figma-color-border);
+    padding-top: var(--spacer-2);
+  }
+
+  /* First section sits 16px below the panel top — gives the first title room
+     to breathe and matches the visual weight of later section dividers. */
+  body > fig-group:first-of-type,
+  #plugin-root > fig-group:first-of-type,
+  #plugin-root > div > fig-group:first-of-type {
+    padding-top: 16px;
+  }
+
+  /* Non-collapsible section headers use the tight GenTool stack. Collapsible
+     groups keep FigUI3's native row header (chevron + clickable label). */
+  fig-group:not([collapsible]) > fig-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    min-height: 0;
+    padding: var(--spacer-1) var(--spacer-3) 0;
+    margin: 0;
+  }
+
+  fig-group:not([collapsible]) + fig-group > fig-header {
+    padding-top: var(--spacer-1);
+  }
+
+  fig-group:not([collapsible]) > fig-header h3 {
+    font-weight: var(--body-medium-fontWeight);
+    line-height: var(--body-medium-lineHeight);
+    margin: 0;
+    padding-bottom: var(--spacer-1);
+  }
+
+  /* Footer spec: 16px sides, 12px top/bottom, 8px between buttons.
+     ALWAYS wrap buttons in <div class="footer-actions"> so padding stays
+     identical whether there's 1 or N buttons.
+     See docs/08-figui3-ui.md > Footer spec. */
+  /* Higher specificity than vendor's `fig-footer[borderless]` (box-shadow:none).
+     Spec: 12px top + bottom, 16px sides, 8px between buttons. */
+  fig-footer,
+  fig-footer[borderless] {
+    box-shadow: inset 0 1px 0 var(--figma-color-border);
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    min-height: 0;
+    padding: 12px 16px;
+  }
+
+  fig-footer::before {
+    display: none;
+  }
+
+  .footer-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .footer-actions fig-button {
+    width: 100%;
+    margin: 0;
+  }
+
+  /* === Color picker (keep if the tool uses fig-input-color) ===
+     Required for Figma-style popover in 240px iframes. Do not remove or replace
+     with ad-hoc rules (no min-width on .fig-fill-picker-input-mode, no width:100%
+     on the mode dropdown). See docs/08-figui3-ui.md > Color picker. */
+  dialog.fig-fill-picker-dialog {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    max-height: none;
+    height: max-content;
+    overflow: visible;
+  }
+
+  dialog.fig-fill-picker-dialog .fig-fill-picker-sliders fig-slider {
+    width: 100%;
+    display: flex;
+  }
+
+  dialog.fig-fill-picker-dialog .fig-fill-picker-sliders fig-slider .fig-slider-input-container {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  dialog.fig-fill-picker-dialog fig-field.fig-fill-picker-inputs[direction="horizontal"] {
+    --fig-field-left-padding: 0;
+    --fig-field-label-ratio: calc(3.5rem + var(--spacer-3));
+    --fig-field-input-ratio: 1fr;
+  }
+
+  dialog.fig-fill-picker-dialog fig-field.fig-fill-picker-inputs > .fig-fill-picker-input-mode {
+    width: 3.5rem;
+    max-width: 100%;
+    justify-self: center;
+  }
+
+  dialog.fig-fill-picker-dialog fig-field.fig-fill-picker-inputs > .fig-fill-picker-input-fields {
+    min-width: 0;
+  }
+
+  /* Collapsible rows — animate height open/closed. The ResizeObserver on
+     #plugin-root follows each frame so the panel glides in sync. */
+  .collapsible {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 200ms ease, opacity 160ms ease;
+    opacity: 1;
+  }
+  .collapsible > .collapsible-inner {
+    overflow: hidden;
+    min-height: 0;
+  }
+  .collapsible[collapsed] {
+    grid-template-rows: 0fr;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* === Template Lab === */
+  [hidden] { display: none !important; }
+
+  .pad-x { padding: 0 var(--spacer-3); }
+  .pad-x fig-button { width: 100%; }
+
+  .hint {
+    padding: var(--spacer-1) var(--spacer-3) var(--spacer-2);
+    color: var(--figma-color-text-secondary);
+    font-size: var(--font-size-default, 11px);
+    line-height: 1.45;
+  }
+
+  .stack { display: flex; flex-direction: column; gap: var(--spacer-2); }
+
+  /* Inline selection status line (list "New template" + editor "Add a layer"). */
+  .nt-hint {
+    padding: 2px 16px 8px;
+    color: var(--figma-color-text-secondary);
+    font-size: 11px;
+    line-height: 16px;
+  }
+  .nt-hint.selected { color: var(--figma-color-text-brand, #7cc4f8); }
+
+  /* Back nav row at the top of the template editor. */
+  .nav-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px;
+    cursor: pointer;
+  }
+  .nav-ico {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    color: var(--figma-color-text);
+    flex: 0 0 auto;
+  }
+  .nav-title {
+    font-weight: var(--font-weight-strong, 550);
+    font-size: 11px;
+    line-height: 16px;
+    color: var(--figma-color-text);
+  }
+  .nav-row:hover .nav-ico { color: var(--figma-color-text-secondary); }
+
+  /* Editor content starts 8px below the top — the nav row's symmetric 8px
+     padding matches the canonical frame's `py-[8px]` Fields container. */
+
+  /* "Add a layer" sits below its divider with extra breathing room (8px more
+     than the default group top), matching the canonical frame. */
+  #addlayer-group { padding-top: var(--spacer-3); }
+
+  /* Add-mapping button row: 16px sides, 4px top/bottom, full-width button. */
+  #add-mapping-row { padding: var(--spacer-1) var(--spacer-3); }
+  #add-mapping-row fig-button { width: 100%; }
+
+  /* Editor groups all carry a top divider (incl. the first, which follows the
+     nav row instead of another group). */
+  #plugin-root > #view-create > fig-group:first-of-type {
+    box-shadow: inset 0 1px 0 0 var(--figma-color-border);
+    padding-top: var(--spacer-2);
+  }
+
+  /* With no saved templates, hide the "Use a template" group entirely — only
+     the "New template" group (already first, 16px top) remains. */
+  #view-list.no-templates #saved-group { display: none; }
+
+  /* Saved template rows — bordered name box + edit/delete actions.
+     Mirrors the canonical frame: row px-16 py-4, 8px gap; box h-24 bordered. */
+  #template-list { display: flex; flex-direction: column; }
+  .t-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacer-2);
+    padding: var(--spacer-1) var(--spacer-3);
+  }
+  .t-box {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    height: 24px;
+    padding: 0 var(--spacer-1) 0 var(--spacer-2);
+    border: 1px solid var(--figma-color-border);
+    border-radius: 5px;
+    font-weight: var(--font-weight-strong, 550);
+    font-size: 11px;
+    line-height: 16px;
+    color: var(--figma-color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .t-box:hover { background: var(--figma-color-bg-secondary); }
+  .t-row-actions { display: flex; align-items: center; flex: 0 0 auto; }
+  .t-row-actions fig-button { flex: 0 0 auto; }
+
+  /* Footer — right-aligned action button. */
+  .footer-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    width: 100%;
+  }
+  .footer-row fig-button { flex: 0 0 auto; }
+
+  /* Mapping rows — composed PropsKit row: name input | type select | actions.
+     Mirrors the canonical frame's grid (1fr name, 1fr select, hug actions) with
+     8px gaps, 16px sides, 4px top/bottom. */
+  .map-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--spacer-2);
+    padding: var(--spacer-1) var(--spacer-3);
+  }
+  .map-row fig-input-text,
+  .map-row fig-dropdown {
+    width: 100%;
+    min-width: 0;
+  }
+  .map-actions {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+  }
+  .map-actions fig-button { flex: 0 0 auto; }
+
+  /* Row icon buttons (focus/remove, edit/delete): tertiary at rest, primary on
+     hover. The SVGs are slotted light-DOM children, so set color on them
+     directly — color set on the fig-button host is reset by its shadow button. */
+  .map-actions fig-button svg,
+  .t-row-actions fig-button svg {
+    color: var(--figma-color-icon-tertiary, var(--figma-color-text-tertiary));
+  }
+  .map-actions fig-button:hover svg,
+  .t-row-actions fig-button:hover svg {
+    color: var(--figma-color-icon, var(--figma-color-text));
+  }
+</style>
+</head>
+<body>
+
+<div id="plugin-root">
+
+  <!-- ============ STATE 1 — Discovery ============ -->
+  <div id="view-list">
+    <fig-group id="new-template-group" name="New template">
+      <div id="new-template-hint" class="nt-hint"></div>
+    </fig-group>
+
+    <fig-group id="saved-group" name="Use a template">
+      <div id="template-list"></div>
+    </fig-group>
+
+    <fig-footer borderless>
+      <div class="footer-row">
+        <fig-button id="create-btn" variant="primary" disabled>Create a template</fig-button>
+      </div>
+    </fig-footer>
+  </div>
+
+  <!-- ============ STATE 2 — Creation Mode ============ -->
+  <div id="view-create" hidden>
+    <div id="back-nav" class="nav-row" role="button" tabindex="0">
+      <span class="nav-ico" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M10 4 L6 8 L10 12" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span id="nav-title" class="nav-title">New template</span>
+    </div>
+
+    <fig-group>
+      <fig-field direction="horizontal" columns="2/5">
+        <label for="template-name">Template name</label>
+        <fig-input-text id="template-name" placeholder="Untitled template"></fig-input-text>
+      </fig-field>
+    </fig-group>
+
+    <fig-group id="mapping-group" name="Layer mapping" hidden>
+      <div id="mapping-list"></div>
+    </fig-group>
+
+    <fig-group id="addlayer-group" name="Add a layer">
+      <div id="selected-layer" class="nt-hint"></div>
+      <div id="add-mapping-row" hidden>
+        <fig-button id="add-mapping" variant="secondary">Add mapping</fig-button>
+      </div>
+    </fig-group>
+
+    <fig-footer borderless>
+      <div class="footer-row">
+        <fig-button id="save-template" variant="primary" disabled>Save template</fig-button>
+      </div>
+    </fig-footer>
+  </div>
+
+  <!-- ============ STATE 3 — Use Mode ============ -->
+  <div id="view-use" hidden>
+    <fig-group>
+      <fig-header borderless><h3 id="use-title">Template</h3></fig-header>
+      <div id="use-missing" class="hint" hidden>
+        The source design is missing — generation is unavailable for this template.
+      </div>
+      <div id="use-form"></div>
+    </fig-group>
+
+    <fig-group>
+      <fig-header borderless><h3>Output</h3></fig-header>
+      <fig-field direction="horizontal" columns="thirds">
+        <label for="copy-count">Copies</label>
+        <fig-dropdown id="copy-count" value="3">
+          <option value="1">1</option>
+          <option value="3">3</option>
+          <option value="6">6</option>
+        </fig-dropdown>
+      </fig-field>
+      <fig-field direction="horizontal" columns="thirds">
+        <label for="layout">Layout</label>
+        <fig-dropdown id="layout" value="row">
+          <option value="row">Row</option>
+          <option value="grid">Grid</option>
+        </fig-dropdown>
+      </fig-field>
+    </fig-group>
+
+    <fig-footer borderless>
+      <div class="footer-actions">
+        <fig-button id="sample-content" variant="secondary">Sample content</fig-button>
+        <fig-button id="generate" variant="primary">Generate</fig-button>
+        <fig-button id="back" variant="secondary">Back</fig-button>
+      </div>
+    </fig-footer>
+  </div>
+
+</div>
+
+<script>
+<!-- FIGUI3_JS -->
+</script>
+<script>
+  // Auto-resize panel to hug content. See docs/08-figui3-ui.md > Auto-resize.
+  // measurePanelHeight + watchColorPickerDialog keep the iframe tall enough when
+  // the Figma color popover extends below #plugin-root (docs/08 > Color picker).
+  var lastReportedHeight = 0;
+  var resizeRaf = 0;
+
+  function reportHeight(height) {
+    var h = Math.ceil(height);
+    if (h && h !== lastReportedHeight) {
+      lastReportedHeight = h;
+      parent.postMessage({ pluginMessage: { type: 'resize', height: h } }, '*');
+    }
+  }
+
+  function measurePanelHeight() {
+    var root = document.getElementById('plugin-root');
+    if (!root) return 0;
+    var height = Math.ceil(root.getBoundingClientRect().height);
+    var dialog = document.querySelector('dialog.fig-fill-picker-dialog[open]');
+    if (dialog) {
+      var dialogBottom = Math.ceil(dialog.getBoundingClientRect().bottom + 12);
+      height = Math.max(height, dialogBottom);
+    }
+    return height;
+  }
+
+  function reportPanelHeight() {
+    reportHeight(measurePanelHeight());
+  }
+
+  (function setupAutoResize() {
+    var root = document.getElementById('plugin-root');
+    if (!root || typeof ResizeObserver === 'undefined') return;
+    var observer = new ResizeObserver(function () {
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(function () {
+        resizeRaf = 0;
+        reportPanelHeight();
+      });
+    });
+    observer.observe(root);
+  })();
+
+  (function watchColorPickerDialog() {
+    if (typeof MutationObserver === 'undefined') return;
+    var observer = new MutationObserver(function () {
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(function () {
+        resizeRaf = 0;
+        reportPanelHeight();
+      });
+    });
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['open'],
+    });
+  })();
+</script>
+
+<script>
+  // ===== Template Lab app =====
+  var CONTROL_LABELS = {
+    text: 'Text short',
+    longtext: 'Text long',
+    number: 'Number',
+    color: 'Color',
+    image: 'Upload image',
+    visible: 'Hide/Show',
+    variant: 'Variant'
+  };
+
+  var els = {};
+  var currentTemplate = null;   // template shown in Use Mode
+  var imageBytes = {};          // mappingId -> number[] for image controls
+
+  function show(view) {
+    els.viewList.hidden = view !== 'list';
+    els.viewCreate.hidden = view !== 'create';
+    els.viewUse.hidden = view !== 'use';
+    requestAnimationFrame(reportPanelHeight);
+  }
+
+  function send(msg) {
+    parent.postMessage({ pluginMessage: msg }, '*');
+  }
+
+  function clear(node) {
+    while (node.firstChild) node.removeChild(node.firstChild);
+  }
+
+  // FigUI3 inputs (text, dropdown, color) render from the `value` attribute —
+  // setting only the JS property leaves the displayed value stale.
+  function setFieldValue(el, val) {
+    if (!el) return;
+    var v = val == null ? '' : String(val);
+    el.setAttribute('value', v);
+    try { el.value = v; } catch (e) {}
+  }
+
+  /* ---------- State 1: list ---------- */
+
+  function renderRoot(root) {
+    // "New template" group reflects the current canvas selection inline.
+    if (root && root.valid) {
+      els.createBtn.removeAttribute('disabled');
+      els.newTemplateHint.textContent = 'Selected layer: ' + root.name;
+      els.newTemplateHint.title = root.name;
+      els.newTemplateHint.classList.add('selected');
+    } else {
+      els.createBtn.setAttribute('disabled', '');
+      els.newTemplateHint.textContent = 'Select a layer to create a template';
+      els.newTemplateHint.title = '';
+      els.newTemplateHint.classList.remove('selected');
+    }
+  }
+
+  function renderTemplates(list, root) {
+    clear(els.templateList);
+    els.viewList.classList.toggle('no-templates', list.length === 0);
+    list.forEach(function (t) {
+      var row = document.createElement('div');
+      row.className = 't-row';
+
+      var box = document.createElement('div');
+      box.className = 't-box';
+      box.textContent = t.name;
+      box.title = t.name;
+      box.setAttribute('role', 'button');
+      box.setAttribute('tabindex', '0');
+      function open() { send({ type: 'openTemplate', templateId: t.id }); }
+      box.addEventListener('click', open);
+      box.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+      });
+
+      var actions = document.createElement('div');
+      actions.className = 't-row-actions';
+      actions.appendChild(makeIconButton('write', 'Edit template', function () {
+        send({ type: 'editTemplate', templateId: t.id });
+      }));
+      actions.appendChild(makeIconButton('minus', 'Delete template', function () {
+        send({ type: 'deleteTemplate', templateId: t.id });
+      }));
+
+      row.appendChild(box);
+      row.appendChild(actions);
+      els.templateList.appendChild(row);
+    });
+    renderRoot(root);
+  }
+
+  /* ---------- State 2: create ---------- */
+
+  var draftMappingCount = 0;
+  var currentControls = [];   // supported controls for the selected layer
+
+  function renderContext(context) {
+    var inside = !!(context && context.insideRoot);
+    currentControls = inside && context.controls ? context.controls : [];
+    if (inside) {
+      els.selectedLayer.textContent = 'Selected layer: ' + context.layerName;
+      els.selectedLayer.classList.add('selected');
+      els.addMappingRow.hidden = false;
+    } else {
+      els.selectedLayer.textContent = 'Select a layer inside the template.';
+      els.selectedLayer.classList.remove('selected');
+      els.addMappingRow.hidden = true;
+    }
+    requestAnimationFrame(reportPanelHeight);
+  }
+
+  // Icons traced from the canonical frame's 24px FPL glyphs, rendered at 16px to
+  // match the design's icon slots. icon.24.select isn't in fig.js, and fig.js's
+  // minus renders narrower than icon.24.minus — so both are exact inline vectors.
+  var FOCUS_SVG =
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none">' +
+    '<circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.25"/>' +
+    '<circle cx="8" cy="8" r="3.4" stroke="currentColor" stroke-width="1.25"/>' +
+    '<circle cx="8" cy="8" r="1.3" fill="currentColor"/></svg>';
+
+  // icon.24.minus (node 192:8606) re-scaled so the bar reads 12px wide at 16px:
+  // a 1px-tall rounded capsule from x2→x14 on a 16px grid.
+  var MINUS_SVG =
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none">' +
+    '<path d="M14 8C14 8.27614 13.7761 8.5 13.5 8.5H2.5C2.22386 8.5 2 8.27614 ' +
+    '2 8C2 7.72386 2.22386 7.5 2.5 7.5H13.5C13.7761 7.5 14 7.72386 14 8Z" ' +
+    'fill="currentColor"/></svg>';
+
+  // Exact icon.24.write path (node 192:9402) — pencil over a card, filled.
+  // The glyph occupies ~x6→x18 of the 24px frame; viewBox "4 4 16 16" maps that
+  // to a centred 12x12 within the 16px icon slot (matches minus/focus sizing).
+  var WRITE_SVG =
+    '<svg width="16" height="16" viewBox="4 4 16 16" fill="none">' +
+    '<path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M11.5 ' +
+    '5.99974C11.7761 5.99974 11.9999 6.22367 12 6.49974C12 6.77588 11.7761 ' +
+    '6.99974 11.5 6.99974H8C7.44776 6.99974 7.00008 7.44752 7 7.99974V15.9997C7 ' +
+    '16.552 7.44771 16.9997 8 16.9997H16C16.5523 16.9997 17 16.552 17 ' +
+    '15.9997V12.4997C17.0001 12.2237 17.2239 11.9997 17.5 11.9997C17.7761 ' +
+    '11.9997 17.9999 12.2237 18 12.4997V15.9997C18 17.1043 17.1046 17.9997 16 ' +
+    '17.9997H8C6.89543 17.9997 6 17.1043 6 15.9997V7.99974C6.00008 6.89524 ' +
+    '6.89548 5.99974 8 5.99974H11.5ZM14.7236 6.35326C15.3094 5.76747 16.2599 ' +
+    '5.76747 16.8457 6.35326L17.5527 7.06029C18.1384 7.64596 18.1382 8.59557 ' +
+    '17.5527 9.18138L13.1035 13.6306C12.9581 13.7759 12.784 13.8902 12.5928 ' +
+    '13.9656L10.9043 14.6316C9.89058 15.0309 8.88619 14.0322 9.28027 ' +
+    '13.0163L9.93945 11.3191C10.0148 11.1248 10.13 10.9479 10.2773 ' +
+    '10.8005L14.7236 6.35326ZM10.9844 11.5076C10.9354 11.5566 10.8972 11.6158 ' +
+    '10.8721 11.6804L10.2129 13.3786C10.1346 13.5814 10.3348 13.781 10.5371 ' +
+    '13.7019L12.2266 13.0359C12.2902 13.0108 12.3481 12.9719 12.3965 ' +
+    '12.9236L15.7852 9.53587L14.3701 8.12084L10.9844 11.5076ZM16.1387 ' +
+    '7.06029C15.9435 6.86514 15.6269 6.86538 15.4316 7.06029L15.0781 7.4138L16.4922 ' +
+    '8.82787L16.8457 8.47435C17.0406 8.27906 17.0408 7.96247 16.8457 ' +
+    '7.76732L16.1387 7.06029Z"/></svg>';
+
+  var ICON_SVG = { minus: MINUS_SVG, write: WRITE_SVG, focus: FOCUS_SVG };
+
+  function makeIconButton(kind, label, onClick) {
+    var btn = document.createElement('fig-button');
+    btn.setAttribute('variant', 'ghost');
+    btn.setAttribute('icon', 'true');
+    btn.setAttribute('aria-label', label);
+    btn.innerHTML = ICON_SVG[kind] || FOCUS_SVG;
+    btn.addEventListener('click', onClick);
+    return btn;
+  }
+
+  function makeTypeDropdown(m) {
+    // fig-dropdown only reads its <option> children when it first connects, so
+    // build the populated element before it's inserted into the document.
+    var controls = (m.availableControls && m.availableControls.length)
+      ? m.availableControls
+      : [m.control];
+    var dd = document.createElement('fig-dropdown');
+    controls.forEach(function (c) {
+      var opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = CONTROL_LABELS[c] || c;
+      dd.appendChild(opt);
+    });
+    dd.setAttribute('value', m.control);
+    dd.addEventListener('change', function () {
+      send({ type: 'changeMappingControl', mappingId: m.id, control: dd.value });
+    });
+    return dd;
+  }
+
+  function renderMappings(mappings) {
+    draftMappingCount = mappings.length;
+    clear(els.mappingList);
+    els.mappingGroup.hidden = mappings.length === 0;
+    if (mappings.length > 0) els.saveTemplate.removeAttribute('disabled');
+    else els.saveTemplate.setAttribute('disabled', '');
+    mappings.forEach(function (m) {
+      var row = document.createElement('div');
+      row.className = 'map-row';
+
+      var name = document.createElement('fig-input-text');
+      setFieldValue(name, m.layerName);
+      name.addEventListener('change', function () {
+        send({ type: 'updateMappingName', mappingId: m.id, name: name.value || '' });
+      });
+
+      var actions = document.createElement('div');
+      actions.className = 'map-actions';
+      actions.appendChild(makeIconButton('focus', 'Select layer on canvas', function () {
+        send({ type: 'focusMapping', mappingId: m.id });
+      }));
+      actions.appendChild(makeIconButton('minus', 'Remove layer', function () {
+        send({ type: 'removeMapping', mappingId: m.id });
+      }));
+
+      row.appendChild(name);
+      row.appendChild(makeTypeDropdown(m));
+      row.appendChild(actions);
+      els.mappingList.appendChild(row);
+    });
+  }
+
+  /* ---------- State 3: use / dynamic form ---------- */
+
+  function buildField(mapping) {
+    var field = document.createElement('fig-field');
+    field.setAttribute('direction', 'horizontal');
+    field.setAttribute('columns', 'thirds');
+
+    var label = document.createElement('label');
+    var inputId = 'f_' + mapping.id;
+    label.setAttribute('for', inputId);
+    label.textContent = mapping.layerName;
+
+    var control;
+    switch (mapping.control) {
+      case 'longtext':
+        control = document.createElement('fig-input-text');
+        control.setAttribute('multiline', 'true');
+        break;
+      case 'number':
+        control = document.createElement('fig-input-number');
+        break;
+      case 'color':
+        control = document.createElement('fig-input-color');
+        control.setAttribute('value', '#1E1E1E');
+        control.setAttribute('text', 'true');
+        control.setAttribute('alpha', 'true');
+        control.setAttribute('picker', 'figma');
+        break;
+      case 'image':
+        control = document.createElement('fig-input-file');
+        control.setAttribute('accepts', 'image/png,image/jpeg,image/gif,image/webp');
+        control.setAttribute('label', 'Upload image');
+        control.addEventListener('change', makeImageReader(mapping.id, control));
+        break;
+      case 'visible':
+        // Shown as a Show/Hide dropdown (matches the canonical form design).
+        control = document.createElement('fig-dropdown');
+        ['show', 'hide'].forEach(function (v) {
+          var opt = document.createElement('option');
+          opt.value = v;
+          opt.textContent = v === 'show' ? 'Show' : 'Hide';
+          control.appendChild(opt);
+        });
+        control.setAttribute('value', 'show');
+        break;
+      case 'variant':
+        control = document.createElement('fig-dropdown');
+        (mapping.variantOptions || []).forEach(function (o) {
+          var opt = document.createElement('option');
+          opt.value = o;
+          opt.textContent = o;
+          control.appendChild(opt);
+        });
+        if (mapping.variantOptions && mapping.variantOptions.length) {
+          setFieldValue(control, mapping.variantOptions[0]);
+        }
+        break;
+      default: // text
+        control = document.createElement('fig-input-text');
+    }
+    control.id = inputId;
+    control.setAttribute('data-mapping-id', mapping.id);
+    control.setAttribute('data-control', mapping.control);
+
+    field.appendChild(label);
+    field.appendChild(control);
+    return field;
+  }
+
+  function makeImageReader(mappingId, el) {
+    return function () {
+      var f = el.files && el.files[0];
+      if (!f) { delete imageBytes[mappingId]; return; }
+      var reader = new FileReader();
+      reader.onload = function () {
+        imageBytes[mappingId] = Array.prototype.slice.call(new Uint8Array(reader.result));
+      };
+      reader.readAsArrayBuffer(f);
+    };
+  }
+
+  function renderUseForm(template, sourceMissing) {
+    currentTemplate = template;
+    imageBytes = {};
+    els.useTitle.textContent = template.name;
+    els.useMissing.hidden = !sourceMissing;
+    clear(els.useForm);
+    template.mappings.forEach(function (m) {
+      els.useForm.appendChild(buildField(m));
+    });
+    if (sourceMissing) {
+      els.generate.setAttribute('disabled', '');
+    } else {
+      els.generate.removeAttribute('disabled');
+    }
+    requestAnimationFrame(reportPanelHeight);
+  }
+
+  function collectValues() {
+    var values = {};
+    if (!currentTemplate) return values;
+    currentTemplate.mappings.forEach(function (m) {
+      var el = els.useForm.querySelector('[data-mapping-id="' + m.id + '"]');
+      if (!el) return;
+      if (m.control === 'visible') {
+        values[m.id] = { control: 'visible', value: el.value !== 'hide' };
+      } else if (m.control === 'color') {
+        values[m.id] = { control: 'color', value: el.value };
+      } else if (m.control === 'image') {
+        values[m.id] = { control: 'image', bytes: imageBytes[m.id] || null };
+      } else if (m.control === 'variant') {
+        values[m.id] = { control: 'variant', value: el.value };
+      } else {
+        values[m.id] = { control: m.control, value: el.value || '' };
+      }
+    });
+    return values;
+  }
+
+  /* ---------- Sample content engine (semantic heuristics) ---------- */
+
+  function sampleText(name, control) {
+    var n = (name || '').toLowerCase();
+    if (/title|heading|headline/.test(n)) return 'Build something remarkable';
+    if (/subtitle|tagline|eyebrow/.test(n)) return 'A simpler way to ship your best work';
+    if (/cta|button|action/.test(n)) return 'Get started';
+    if (/email/.test(n)) return 'alex@example.com';
+    if (/role|position|job/.test(n)) return 'Product Designer';
+    if (/name|author|person/.test(n)) return 'Alex Rivera';
+    if (/price|cost|amount|total/.test(n)) return '$49';
+    if (/date|time/.test(n)) return 'Jun 14, 2026';
+    if (/quote|testimonial/.test(n)) return '“This changed how our team works.”';
+    if (/label|tag|badge|category/.test(n)) return 'New';
+    if (control === 'longtext' || /body|description|paragraph|summary|detail|copy/.test(n)) {
+      return 'Template Lab keeps your layers editable and your team fast. Map once, then generate clean variations in seconds.';
+    }
+    return 'Sample text';
+  }
+
+  function sampleNumber(name) {
+    var n = (name || '').toLowerCase();
+    if (/price|cost|amount|total/.test(n)) return '49';
+    if (/percent|rate|discount|%/.test(n)) return '25';
+    if (/year/.test(n)) return '2026';
+    if (/age/.test(n)) return '32';
+    if (/qty|quantity|count|items|stock/.test(n)) return '12';
+    if (/rating|score|stars/.test(n)) return '5';
+    return '42';
+  }
+
+  function sampleColor(name) {
+    var n = (name || '').toLowerCase();
+    if (/bg|background|surface|fill/.test(n)) return '#F5F7FA';
+    if (/accent|primary|brand|cta|button|link|highlight/.test(n)) return '#0D99FF';
+    if (/success|positive|go/.test(n)) return '#14AE5C';
+    if (/warn|alert|error|danger|stop/.test(n)) return '#F24822';
+    if (/text|title|label|heading/.test(n)) return '#1E1E1E';
+    return '#8A8A8A';
+  }
+
+  function applySampleContent() {
+    if (!currentTemplate) return;
+    currentTemplate.mappings.forEach(function (m) {
+      var el = els.useForm.querySelector('[data-mapping-id="' + m.id + '"]');
+      if (!el) return;
+      if (m.control === 'text' || m.control === 'longtext') {
+        setFieldValue(el, sampleText(m.layerName, m.control));
+      } else if (m.control === 'number') {
+        setFieldValue(el, sampleNumber(m.layerName));
+      } else if (m.control === 'color') {
+        setFieldValue(el, sampleColor(m.layerName));
+      } else if (m.control === 'visible') {
+        setFieldValue(el, 'show');
+      } else if (m.control === 'variant' && m.variantOptions && m.variantOptions.length) {
+        var idx = Math.floor(Math.random() * m.variantOptions.length);
+        setFieldValue(el, m.variantOptions[idx]);
+      }
+    });
+    requestAnimationFrame(reportPanelHeight);
+  }
+
+  /* ---------- message handling ---------- */
+
+  window.onmessage = function (event) {
+    var msg = event.data.pluginMessage;
+    if (!msg) return;
+    if (msg.type === 'showList') {
+      renderTemplates(msg.templates, msg.root);
+      show('list');
+    } else if (msg.type === 'rootInfo') {
+      renderRoot(msg.root);
+    } else if (msg.type === 'showCreate') {
+      if (msg.fresh) setFieldValue(els.templateName, msg.nameValue || '');
+      els.navTitle.textContent = msg.editing ? 'Edit template' : 'New template';
+      renderMappings(msg.mappings);
+      renderContext(msg.context);
+      show('create');
+    } else if (msg.type === 'selectionContext') {
+      renderContext(msg.context);
+    } else if (msg.type === 'showUse') {
+      renderUseForm(msg.template, msg.sourceMissing);
+      show('use');
+    }
+  };
+
+  /* ---------- init ---------- */
+
+  Promise.all([
+    customElements.whenDefined('fig-group'),
+    customElements.whenDefined('fig-header'),
+    customElements.whenDefined('fig-footer'),
+    customElements.whenDefined('fig-field'),
+    customElements.whenDefined('fig-button'),
+    customElements.whenDefined('fig-dropdown'),
+    customElements.whenDefined('fig-input-text'),
+    customElements.whenDefined('fig-input-number'),
+    customElements.whenDefined('fig-input-color'),
+    customElements.whenDefined('fig-input-file'),
+    customElements.whenDefined('fig-switch'),
+    customElements.whenDefined('fig-icon')
+  ]).then(function () {
+    els.viewList = document.getElementById('view-list');
+    els.viewCreate = document.getElementById('view-create');
+    els.viewUse = document.getElementById('view-use');
+    els.templateList = document.getElementById('template-list');
+    els.newTemplateHint = document.getElementById('new-template-hint');
+    els.createBtn = document.getElementById('create-btn');
+    els.backNav = document.getElementById('back-nav');
+    els.navTitle = document.getElementById('nav-title');
+    els.templateName = document.getElementById('template-name');
+    els.selectedLayer = document.getElementById('selected-layer');
+    els.addMappingRow = document.getElementById('add-mapping-row');
+    els.addMapping = document.getElementById('add-mapping');
+    els.mappingGroup = document.getElementById('mapping-group');
+    els.mappingList = document.getElementById('mapping-list');
+    els.saveTemplate = document.getElementById('save-template');
+    els.useTitle = document.getElementById('use-title');
+    els.useMissing = document.getElementById('use-missing');
+    els.useForm = document.getElementById('use-form');
+    els.copyCount = document.getElementById('copy-count');
+    els.layout = document.getElementById('layout');
+    els.sampleContent = document.getElementById('sample-content');
+    els.generate = document.getElementById('generate');
+    els.back = document.getElementById('back');
+
+    els.createBtn.addEventListener('click', function () {
+      send({ type: 'startCreate' });
+    });
+    els.addMapping.addEventListener('click', function () {
+      // The mapping's type is inferred in the sandbox and editable per-row.
+      send({ type: 'addMapping' });
+    });
+    els.saveTemplate.addEventListener('click', function () {
+      send({ type: 'saveTemplate', name: els.templateName.value || '' });
+    });
+    function goBack() { send({ type: 'cancelCreate' }); }
+    els.backNav.addEventListener('click', goBack);
+    els.backNav.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goBack(); }
+    });
+    els.sampleContent.addEventListener('click', applySampleContent);
+    els.back.addEventListener('click', function () {
+      send({ type: 'backToList' });
+    });
+    els.generate.addEventListener('click', function () {
+      if (!currentTemplate) return;
+      send({
+        type: 'generate',
+        templateId: currentTemplate.id,
+        values: collectValues(),
+        count: parseInt(els.copyCount.value, 10) || 1,
+        layout: els.layout.value === 'grid' ? 'grid' : 'row'
+      });
+    });
+
+    send({ type: 'ready' });
+  });
+</script>
+
+</body>
+</html>

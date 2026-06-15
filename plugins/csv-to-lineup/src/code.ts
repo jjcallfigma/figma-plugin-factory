@@ -44,8 +44,12 @@ type CardPreset = {
   initialsSize: number;
 };
 
+type CsvInputMode = 'paste' | 'upload';
+
 type State = {
   csvData: string;
+  csvInputMode: CsvInputMode;
+  uploadedFileName: string | null;
   columns: number;
   gap: number;
   cardSize: CardSizeKey;
@@ -75,6 +79,8 @@ Moodymann,The Grove,4:00 PM,Saturday,Redwood Stage,`;
 
 const defaultState: State = {
   csvData: SAMPLE_CSV,
+  csvInputMode: 'paste',
+  uploadedFileName: null,
   columns: 3,
   gap: 16,
   cardSize: 'headliner',

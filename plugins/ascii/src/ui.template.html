@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>ASCII Character Finder</title>
+<style>
+<!-- FIGUI3_CSS -->
+</style>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: auto;
+    min-height: 0;
+  }
+
+  body {
+    display: block;
+  }
+
+  #plugin-root {
+    height: auto;
+  }
+
+  fig-group {
+    margin-bottom: 0;
+    padding-bottom: var(--spacer-2);
+  }
+
+  fig-group + fig-group {
+    box-shadow: inset 0 1px 0 0 var(--figma-color-border);
+    padding-top: var(--spacer-2);
+  }
+
+  body > fig-group:first-of-type,
+  #plugin-root > fig-group:first-of-type {
+    padding-top: 12px;
+  }
+
+  fig-group > fig-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    min-height: 0;
+    padding: var(--spacer-1) var(--spacer-3) 0;
+    margin: 0;
+  }
+
+  fig-group + fig-group > fig-header {
+    padding-top: var(--spacer-1);
+  }
+
+  fig-group > fig-header h3 {
+    font-weight: var(--body-medium-fontWeight);
+    line-height: var(--body-medium-lineHeight);
+    margin: 0;
+    padding-bottom: var(--spacer-1);
+  }
+
+  fig-footer,
+  fig-footer[borderless] {
+    box-shadow: inset 0 1px 0 var(--figma-color-border);
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    min-height: 0;
+    padding: 12px 16px;
+  }
+
+  fig-footer::before {
+    display: none;
+  }
+
+  .footer-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .footer-actions fig-button {
+    width: 100%;
+    margin: 0;
+  }
+
+  .field-pad {
+    padding: 0 var(--spacer-3) var(--spacer-1);
+  }
+
+  .results-meta {
+    padding: 0 var(--spacer-3) var(--spacer-1);
+    font-size: var(--body-small-fontSize);
+    line-height: var(--body-small-lineHeight);
+    color: var(--figma-color-text-secondary);
+  }
+
+  .results-scroll {
+    margin: 0 var(--spacer-3) var(--spacer-1);
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--figma-color-border);
+    border-radius: var(--radius-medium);
+    background: var(--figma-color-bg);
+  }
+
+  .char-row {
+    display: grid;
+    grid-template-columns: 36px 1fr;
+    gap: var(--spacer-2);
+    align-items: center;
+    width: 100%;
+    padding: 6px var(--spacer-2);
+    border: none;
+    border-bottom: 1px solid var(--figma-color-border);
+    background: transparent;
+    color: var(--figma-color-text);
+    text-align: left;
+    cursor: default;
+    font: inherit;
+  }
+
+  .char-row:last-child {
+    border-bottom: none;
+  }
+
+  .char-row:hover {
+    background: var(--figma-color-bg-hover);
+  }
+
+  .char-row[aria-selected="true"] {
+    background: var(--figma-color-bg-brand-tertiary);
+  }
+
+  .char-glyph {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-small);
+    background: var(--figma-color-bg-secondary);
+    font-size: 18px;
+    line-height: 1;
+    font-family: var(--font-family);
+  }
+
+  .char-glyph.is-space {
+    font-size: 10px;
+    color: var(--figma-color-text-secondary);
+  }
+
+  .char-info {
+    min-width: 0;
+  }
+
+  .char-name {
+    display: block;
+    font-size: var(--body-small-fontSize);
+    line-height: var(--body-small-lineHeight);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .char-code {
+    display: block;
+    font-size: var(--body-small-fontSize);
+    line-height: var(--body-small-lineHeight);
+    color: var(--figma-color-text-secondary);
+  }
+
+  .empty-state {
+    padding: var(--spacer-4) var(--spacer-3);
+    text-align: center;
+    font-size: var(--body-small-fontSize);
+    line-height: var(--body-small-lineHeight);
+    color: var(--figma-color-text-secondary);
+  }
+
+  .preview-panel {
+    margin: 0 var(--spacer-3) var(--spacer-1);
+    padding: var(--spacer-2);
+    border: 1px solid var(--figma-color-border);
+    border-radius: var(--radius-medium);
+    background: var(--figma-color-bg-secondary);
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: var(--spacer-2);
+    align-items: center;
+  }
+
+  .preview-glyph {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    font-size: 32px;
+    line-height: 1;
+    font-family: var(--font-family);
+    color: var(--figma-color-text);
+  }
+
+  .preview-glyph.is-empty {
+    font-size: var(--body-small-fontSize);
+    color: var(--figma-color-text-secondary);
+  }
+
+  .preview-meta {
+    min-width: 0;
+  }
+
+  .preview-name {
+    display: block;
+    font-size: var(--body-medium-fontSize);
+    line-height: var(--body-medium-lineHeight);
+    font-weight: var(--body-medium-fontWeight);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .preview-code {
+    display: block;
+    margin-top: 2px;
+    font-size: var(--body-small-fontSize);
+    line-height: var(--body-small-lineHeight);
+    color: var(--figma-color-text-secondary);
+  }
+</style>
+</head>
+<body>
+
+<div id="plugin-root">
+  <fig-group>
+    <fig-header borderless><h3>Search</h3></fig-header>
+    <div class="field-pad">
+      <fig-field direction="horizontal" columns="thirds">
+        <label for="search">Find</label>
+        <fig-input-text id="search" placeholder="Name, char, or code"></fig-input-text>
+      </fig-field>
+    </div>
+    <div class="field-pad">
+      <fig-field direction="horizontal" columns="thirds">
+        <label for="category">Category</label>
+        <fig-dropdown id="category" value="all">
+          <option value="all">All</option>
+          <option value="basic">Basic ASCII</option>
+          <option value="arrows">Arrows</option>
+          <option value="math">Math</option>
+          <option value="currency">Currency</option>
+          <option value="punctuation">Punctuation</option>
+          <option value="symbols">Symbols</option>
+          <option value="shapes">Shapes</option>
+          <option value="greek">Greek</option>
+        </fig-dropdown>
+      </fig-field>
+    </div>
+  </fig-group>
+
+  <fig-group>
+    <fig-header borderless><h3>Results</h3></fig-header>
+    <div class="results-meta" id="resultsMeta">Loading characters…</div>
+    <div class="results-scroll" id="resultsList" role="listbox" aria-label="Character results"></div>
+  </fig-group>
+
+  <fig-group>
+    <fig-header borderless><h3>Selection</h3></fig-header>
+    <div class="preview-panel">
+      <div class="preview-glyph is-empty" id="previewGlyph">—</div>
+      <div class="preview-meta">
+        <span class="preview-name" id="previewName">No character selected</span>
+        <span class="preview-code" id="previewCode">Search and pick a row</span>
+      </div>
+    </div>
+    <div class="field-pad">
+      <fig-field direction="horizontal" columns="thirds">
+        <label for="fontSize">Size</label>
+        <fig-input-number id="fontSize" value="48" min="8" max="400" steppers="true"></fig-input-number>
+      </fig-field>
+    </div>
+  </fig-group>
+
+  <fig-footer borderless>
+    <div class="footer-actions">
+      <fig-button id="paste" variant="primary" disabled>Paste</fig-button>
+    </div>
+  </fig-footer>
+</div>
+
+<script>
+<!-- FIGUI3_JS -->
+</script>
+<script>
+  var lastReportedHeight = 0;
+  var resizeRaf = 0;
+
+  function reportHeight(height) {
+    var h = Math.ceil(height);
+    if (h && h !== lastReportedHeight) {
+      lastReportedHeight = h;
+      parent.postMessage({ pluginMessage: { type: 'resize', height: h } }, '*');
+    }
+  }
+
+  function measurePanelHeight() {
+    var root = document.getElementById('plugin-root');
+    if (!root) return 0;
+    return Math.ceil(root.getBoundingClientRect().height);
+  }
+
+  function reportPanelHeight() {
+    reportHeight(measurePanelHeight());
+  }
+
+  (function setupAutoResize() {
+    var root = document.getElementById('plugin-root');
+    if (!root || typeof ResizeObserver === 'undefined') return;
+    var observer = new ResizeObserver(function () {
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(function () {
+        resizeRaf = 0;
+        reportPanelHeight();
+      });
+    });
+    observer.observe(root);
+  })();
+
+  var allCharacters = [];
+  var filteredCharacters = [];
+  var selectedEntry = null;
+
+  function readValue(el) {
+    if (!el) return '';
+    if ('value' in el) return el.value;
+    return el.getAttribute('value') || '';
+  }
+
+  function readNumber(el, fallback) {
+    var raw = readValue(el);
+    var n = Number(raw);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  function formatCode(code) {
+    return 'U+' + code.toString(16).toUpperCase().padStart(4, '0') + ' · ' + code;
+  }
+
+  function displayGlyph(char) {
+    if (char === ' ') return 'SPC';
+    if (char === '\u00A0') return 'NBSP';
+    if (char === '\u200B') return 'ZWSP';
+    if (char === '\u200C') return 'ZWNJ';
+    if (char === '\u200D') return 'ZWJ';
+    if (char === '\uFEFF') return 'BOM';
+    return char;
+  }
+
+  function normalizeQuery(query) {
+    return query.trim().toLowerCase();
+  }
+
+  function matchesQuery(entry, query) {
+    if (!query) return true;
+
+    if (entry.char === query || entry.char.toLowerCase() === query) return true;
+    if (entry.name.toLowerCase().indexOf(query) !== -1) return true;
+
+    var decimal = String(entry.code);
+    if (decimal.indexOf(query) !== -1) return true;
+
+    var hex = entry.code.toString(16);
+    var hexUpper = hex.toUpperCase();
+    if (query.indexOf('u+') === 0) {
+      var codeQuery = query.slice(2).replace(/^0x/, '');
+      if (hex.indexOf(codeQuery) !== -1 || hexUpper.indexOf(codeQuery.toUpperCase()) !== -1) return true;
+    }
+    if (query.indexOf('0x') === 0) {
+      var prefixed = query.slice(2);
+      if (hex.indexOf(prefixed) !== -1) return true;
+    }
+    if (hex.indexOf(query) !== -1 || hexUpper.indexOf(query.toUpperCase()) !== -1) return true;
+
+    return false;
+  }
+
+  function applyFilters() {
+    var searchEl = document.getElementById('search');
+    var categoryEl = document.getElementById('category');
+    var query = normalizeQuery(readValue(searchEl));
+    var category = readValue(categoryEl) || 'all';
+
+    filteredCharacters = allCharacters.filter(function (entry) {
+      if (category !== 'all' && entry.category !== category) return false;
+      return matchesQuery(entry, query);
+    });
+
+    if (selectedEntry) {
+      var stillVisible = filteredCharacters.some(function (entry) {
+        return entry.code === selectedEntry.code && entry.char === selectedEntry.char;
+      });
+      if (!stillVisible) selectedEntry = null;
+    }
+
+    renderResults();
+    updatePreview();
+    updatePasteButton();
+    reportPanelHeight();
+  }
+
+  function renderResults() {
+    var list = document.getElementById('resultsList');
+    var meta = document.getElementById('resultsMeta');
+    if (!list || !meta) return;
+
+    list.innerHTML = '';
+
+    if (!allCharacters.length) {
+      meta.textContent = 'No characters loaded.';
+      list.innerHTML = '<div class="empty-state">Waiting for character data…</div>';
+      return;
+    }
+
+    var count = filteredCharacters.length;
+    meta.textContent = count === 1 ? '1 character' : count + ' characters';
+
+    if (!count) {
+      list.innerHTML = '<div class="empty-state">No matches. Try another name, character, or code.</div>';
+      return;
+    }
+
+    var maxRows = 80;
+    var visible = filteredCharacters.slice(0, maxRows);
+
+    visible.forEach(function (entry) {
+      var row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'char-row';
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', selectedEntry && selectedEntry.code === entry.code && selectedEntry.char === entry.char ? 'true' : 'false');
+
+      var glyph = document.createElement('span');
+      glyph.className = 'char-glyph' + (entry.char === ' ' ? ' is-space' : '');
+      glyph.textContent = displayGlyph(entry.char);
+
+      var info = document.createElement('span');
+      info.className = 'char-info';
+
+      var name = document.createElement('span');
+      name.className = 'char-name';
+      name.textContent = entry.name;
+
+      var code = document.createElement('span');
+      code.className = 'char-code';
+      code.textContent = formatCode(entry.code);
+
+      info.appendChild(name);
+      info.appendChild(code);
+      row.appendChild(glyph);
+      row.appendChild(info);
+
+      row.addEventListener('click', function () {
+        selectedEntry = entry;
+        renderResults();
+        updatePreview();
+        updatePasteButton();
+      });
+
+      list.appendChild(row);
+    });
+
+    if (count > maxRows) {
+      var more = document.createElement('div');
+      more.className = 'empty-state';
+      more.textContent = 'Showing first ' + maxRows + ' matches. Narrow your search.';
+      list.appendChild(more);
+    }
+  }
+
+  function updatePreview() {
+    var glyph = document.getElementById('previewGlyph');
+    var name = document.getElementById('previewName');
+    var code = document.getElementById('previewCode');
+    if (!glyph || !name || !code) return;
+
+    if (!selectedEntry) {
+      glyph.className = 'preview-glyph is-empty';
+      glyph.textContent = '—';
+      name.textContent = 'No character selected';
+      code.textContent = 'Search and pick a row';
+      return;
+    }
+
+    glyph.className = 'preview-glyph';
+    glyph.textContent = displayGlyph(selectedEntry.char);
+    name.textContent = selectedEntry.name;
+    code.textContent = formatCode(selectedEntry.code);
+  }
+
+  function updatePasteButton() {
+    var paste = document.getElementById('paste');
+    if (!paste) return;
+    paste.disabled = !selectedEntry;
+  }
+
+  function pasteSelection() {
+    if (!selectedEntry) return;
+    var fontSizeEl = document.getElementById('fontSize');
+    parent.postMessage({
+      pluginMessage: {
+        type: 'paste',
+        character: selectedEntry.char,
+        fontSize: readNumber(fontSizeEl, 48),
+      },
+    }, '*');
+  }
+
+  function init() {
+    var search = document.getElementById('search');
+    var category = document.getElementById('category');
+    var paste = document.getElementById('paste');
+
+    if (search) search.addEventListener('change', applyFilters);
+    if (category) category.addEventListener('change', applyFilters);
+    if (paste) paste.addEventListener('click', pasteSelection);
+
+    window.onmessage = function (event) {
+      var msg = event.data.pluginMessage;
+      if (!msg) return;
+      if (msg.type === 'init' && Array.isArray(msg.characters)) {
+        allCharacters = msg.characters;
+        applyFilters();
+      }
+    };
+
+    reportPanelHeight();
+  }
+
+  Promise.all([
+    customElements.whenDefined('fig-field'),
+    customElements.whenDefined('fig-input-text'),
+    customElements.whenDefined('fig-dropdown'),
+    customElements.whenDefined('fig-input-number'),
+    customElements.whenDefined('fig-button'),
+    customElements.whenDefined('fig-group'),
+    customElements.whenDefined('fig-header'),
+    customElements.whenDefined('fig-footer'),
+  ]).then(init);
+</script>
+
+</body>
+</html>

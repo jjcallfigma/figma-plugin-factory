@@ -24,5 +24,9 @@ const html = template
   .replace('<!-- FIGUI3_CSS -->', () => css)
   .replace('<!-- FIGUI3_JS -->', () => js);
 
+if (fs.existsSync(outPath) && fs.readFileSync(outPath, 'utf8') === html) {
+  process.exit(0);
+}
+
 fs.writeFileSync(outPath, html);
 console.log(`Bundled FigUI3 into ${outPath} (${Math.round(html.length / 1024)} KB)`);

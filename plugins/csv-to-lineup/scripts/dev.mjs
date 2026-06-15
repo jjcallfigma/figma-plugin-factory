@@ -19,11 +19,17 @@ const tsc = spawn('npx', ['tsc', '--watch', '--preserveWatchOutput'], {
   shell: process.platform === 'win32',
 });
 
+let lastTemplateMtime = fs.statSync(templatePath).mtimeMs;
+
 let bundleTimer;
 function scheduleBundleUi() {
   clearTimeout(bundleTimer);
   bundleTimer = setTimeout(() => {
     try {
+      const mtime = fs.statSync(templatePath).mtimeMs;
+      // macOS fs.watch on a file also fires when siblings in src/ change (e.g. ui.html).
+      if (mtime === lastTemplateMtime) return;
+      lastTemplateMtime = mtime;
       execSync('npm run bundle-ui', { cwd: root, stdio: 'inherit' });
     } catch {
       // bundle-ui prints its own errors

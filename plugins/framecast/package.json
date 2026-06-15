@@ -1,0 +1,20 @@
+{
+  "name": "plugin-framecast",
+  "version": "1.0.0",
+  "description": "Framecast — Figma plugin",
+  "scripts": {
+    "build": "npm run bundle-ui && tsc",
+    "dev": "node scripts/dev.mjs",
+    "watch": "npm run dev",
+    "bundle-ui": "node scripts/bundle-ui.mjs",
+    "reset": "node scripts/reset-template.mjs",
+    "postinstall": "mkdir -p src/vendor && cp node_modules/@rogieking/figui3/dist/fig.css node_modules/@rogieking/figui3/dist/fig.js src/vendor/ && npm run build"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.108.0",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "@rogieking/figui3": "^6.4.8"
+  }
+}

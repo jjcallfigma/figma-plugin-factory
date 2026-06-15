@@ -127,6 +127,7 @@ Rules stay short. Docs hold rationale and code samples. Skills load only when a 
 |---|---|
 | `plugin-factory` | Creating or switching `plugins/<slug>/` folders |
 | `color-picker-ui` | `<fig-input-color>` markup, CSS, popover resize |
+| `figui3-catalog` | Picking FigUI3 components; full bundled tag list (tabs, file upload, chooser) |
 | `open-api-tools` | Live data from public HTTP APIs |
 
 ### Documentation
@@ -135,7 +136,7 @@ Rules stay short. Docs hold rationale and code samples. Skills load only when a 
 |---|---|
 | `docs/02-propskit-reference.md` | FigUI3 control catalog |
 | `docs/07-plugin-practices.md` | State, relaunch, output targeting, errors |
-| `docs/08-figui3-ui.md` | Bundling, spacing, color picker, auto-resize |
+| `docs/08-figui3-ui.md` | Bundling, spacing, color picker, auto-resize, **bundled component catalog** |
 | `docs/09-plugin-structure-and-reset.md` | File boundaries and reset workflow |
 | `docs/10-network-open-apis.md` | Network access without API keys |
 | `docs/11-plugin-factory.md` | Multi-plugin workflow |

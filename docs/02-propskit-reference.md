@@ -2,7 +2,7 @@
 
 PropsKit is the V1 GenTools control system. Every tool's UI uses PropsKit-styled controls that feel native to Figma's right properties panel.
 
-**In this workspace, PropsKit is implemented with [FigUI3](https://rog.ie/figui3) web components** (`@rogieking/figui3`), not hand-rolled HTML classes. Read **`docs/08-figui3-ui.md`** for the full setup (bundling, init, panel layout, spacing). The canonical live control reference is the **[FigUI3 Playground](https://rog.ie/figui3)**.
+**In this workspace, PropsKit is implemented with [FigUI3](https://rog.ie/figui3) web components** (`@rogieking/figui3`), not hand-rolled HTML classes. Read **`docs/08-figui3-ui.md`** for bundling, init, panel layout, and **`docs/08-figui3-ui.md > Bundled component catalog`** for every tag shipped in `src/vendor/fig.js`. The canonical live control reference is the **[FigUI3 Playground](https://rog.ie/figui3)**. Agents: **`.cursor/skills/figui3-catalog/SKILL.md`** for control selection.
 
 The working UI shell is `scaffold/src/ui.template.html`. Generated runs edit `template/src/ui.template.html`, run `npm run bundle-ui`, and never hand-edit `ui.html`.
 
@@ -123,7 +123,44 @@ Single-line string. Examples: name, label.
 </fig-field>
 ```
 
-For multi-line, check FigUI3 docs for textarea support or use `fig-input-text` with appropriate attributes.
+Multiline (CSV, long paste):
+
+```html
+<fig-input-text id="csvData" multiline="true" placeholder="artist,stage,time"></fig-input-text>
+```
+
+Commit on `change` (blur), same as single-line.
+
+### Tabs (input mode switch)
+
+Use **`fig-tabs`** + **`fig-tab`** when one section needs two input surfaces (e.g. paste vs upload). This is **not** a multi-step wizard — stay on one screen with one footer.
+
+```html
+<fig-tabs id="dataTabs" value="paste">
+  <fig-tab value="paste" content="#panelPaste" selected>Paste</fig-tab>
+  <fig-tab value="upload" content="#panelUpload">Upload</fig-tab>
+</fig-tabs>
+```
+
+Each `fig-tab` uses `content="#elementId"` to show/hide its panel. Persist `fig-tabs` `value` in tool state.
+
+### File upload
+
+Use **`fig-input-file`** — not a hidden `<input type="file">` plus `fig-button`.
+
+```html
+<fig-input-file id="csvFile" accepts=".csv,text/csv,text/plain" label="Choose CSV file"></fig-input-file>
+```
+
+On `change`, read `element.files[0]` and load into the same state field as pasted text. Restore display name with `filename="…"` when rehydrating.
+
+### Image chooser (thumbnail grid)
+
+```html
+<fig-chooser id="imageChooser" choice-element="fig-choice"></fig-chooser>
+```
+
+Populate with `<fig-choice value="id">` children (often `<img>` inside). See `plugins/artist-lineup-cards`.
 
 ### XYZ / Vector2 positional
 
@@ -193,14 +230,15 @@ This is non-negotiable. V1 GenTools does not live-update during interaction.
 
 **Generators:** bind `change` → `fireRegenerate()`, which posts `regenerate` only when `outputSelected` is true. Footer **Generate** always posts `{ type: 'generate' }`. See `docs/07-plugin-practices.md > Output targeting`.
 
-## Forbidden in V1
+## Avoid in V1 (GenTool comparison defaults)
 
-- **Segmented controls** (use dropdown instead)
-- **Conditional visibility** — flatten everything visible
-- **Hidden labels** (every control has a left-aligned label)
-- **Tabs** (use one screen)
-- **Modals** (use `figma.notify` for messages)
-- **Wizards / multi-step setup**
+- **Segmented controls** — default to `fig-dropdown` for enums (`fig-segmented-control` is bundled; use only when the prompt asks)
+- **Multi-step wizards** — one screen, one footer
+- **Settings panels with many tabs** — at most one `fig-tabs` row **inside a section** for input mode (paste/upload), not navigation across the whole tool
+- **Modals** — use `figma.notify`; do not add `fig-dialog` flows to GenTool panels
+- **Conditional visibility** — prefer flattening; `.collapsible` is OK for one dependent row
+- **Hidden labels** — every `fig-field` row has a left-aligned label
+- **DIY controls** — no styled `fig-button` pairs for tabs, no raw file inputs when `fig-input-file` fits
 - **Raw HTML `.propskit-*` classes** in new tools (legacy reference examples only)
 
 ## Quick reference: which control for which job
@@ -208,13 +246,18 @@ This is non-negotiable. V1 GenTools does not live-update during interaction.
 | Need | FigUI3 component |
 |---|---|
 | Pick a count | `fig-input-number` |
-| Pick from a continuous range | `fig-slider` (in `fig-field`) |
+| Pick from a continuous range | `fig-slider` (in `fig-field`, `variant="neue"`) |
 | Yes/no | `fig-switch` |
-| Pick one of a few options | `fig-dropdown` |
+| Pick one of a few options | `fig-dropdown` (default) or `fig-segmented-control` if prompted |
 | Pick a single color | `fig-input-color` |
 | Pick a multi-color blend | `fig-input-gradient` or fallback colors |
 | Pick a color set | `fig-input-palette` |
 | Free-form text | `fig-input-text` |
-| 2D/3D position | paired `fig-input-number` |
-| Secondary action | `fig-button` in `fig-footer` |
+| Long paste / CSV | `fig-input-text` with `multiline="true"` |
+| Paste vs upload in one section | `fig-tabs` + `fig-tab` |
+| Upload a file | `fig-input-file` |
+| Pick from image thumbnails | `fig-chooser` + `fig-choice` |
+| 2D/3D position | paired `fig-input-number` or `fig-joystick` |
+| Primary / secondary action | `fig-button` in `fig-footer` |
+| Full tag list | `docs/08-figui3-ui.md > Bundled component catalog` |
 | Drag something on canvas | on-canvas handle (rare) |

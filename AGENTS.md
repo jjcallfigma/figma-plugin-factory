@@ -32,12 +32,12 @@ Read only the context needed to generate the tool:
    - `reference/01-generator-color-swatch/code.ts` for Generators
    - `reference/02-action-layer-renamer/code.ts` for Actions
 5. **`scaffold/src/ui.template.html`** — UI shell, spacing CSS, auto-resize, color-picker wiring
-6. **`docs/02-propskit-reference.md`** — allowed FigUI3 controls
+6. **`docs/02-propskit-reference.md`** — default FigUI3 controls; **`docs/08-figui3-ui.md > Bundled component catalog`** for the full `fig.js` inventory (tabs, file upload, chooser, etc.)
 7. **`docs/07-plugin-practices.md > Output targeting`** for Generators
 
 Conditional reads only:
 
-- **`docs/08-figui3-ui.md`** if FigUI3 rendering, panel spacing, auto-resize, or color picker behavior is unclear. For color controls, read **`> Color picker`**.
+- **`docs/08-figui3-ui.md`** if FigUI3 rendering, panel spacing, auto-resize, or color picker behavior is unclear. For color controls, read **`> Color picker`**. For tabs, file upload, multiline, or choosers, read **`> Bundled component catalog`** or **`.cursor/skills/figui3-catalog/SKILL.md`**.
 - **`docs/10-network-open-apis.md`** only when the prompt needs live public HTTP data.
 - **`docs/03-figma-plugin-basics.md`**, **`docs/04-glossary.md`**, and **`docs/06-test-protocol.md`** are references, not required hot-path context.
 
@@ -94,8 +94,8 @@ scaffold/src/               ← committed empty starting point; copied by npm ru
    - For Actions: selection handling, figma.notify, page-level `setRelaunchData` (discovery), optional node relaunch on affected layers, no persistent state
    - If the prompt needs live public data: `fetch` in `code.ts` per `docs/10-network-open-apis.md` (no API keys; do not edit manifest)
 5. **Overwrite `{pluginRoot}/src/ui.template.html`** from the scaffold pattern — preserve the FigUI3 placeholders (`<!-- FIGUI3_CSS -->`, `<!-- FIGUI3_JS -->`), panel spacing CSS, color-picker CSS block, and **`measurePanelHeight` / `watchColorPickerDialog`**. Use **only** FigUI3 web components from `docs/02-propskit-reference.md`. If the tool uses `<fig-input-color>`, read **`docs/08-figui3-ui.md > Color picker`** and use `text="true" alpha="true" picker="figma"`.
-6. **Run `npm run build`** inside `{pluginRoot}` to regenerate `ui.html` and `code.js`.
-7. **Tell the user** to re-run the plugin in Figma (import `{pluginRoot}/manifest.json` once per plugin if factory mode).
+6. **Run `npm run build`** inside `{pluginRoot}` to regenerate `ui.html` and `code.js` — **always as the last step** before you tell the user you're done (even after small UI or sandbox edits).
+7. **Tell the user** to re-run the plugin in Figma (import `{pluginRoot}/manifest.json` once per plugin if factory mode). Figma does not hot-reload `ui.html`; a rebuild alone is not enough until they re-run the tool.
 
 ## What you DO NOT
 

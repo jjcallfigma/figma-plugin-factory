@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Framecast</title>
+  <style>
+<!-- FIGUI3_CSS -->
+</style>
+<style>
+    body {
+      margin: 0;
+      padding: var(--spacer-3);
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacer-2);
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: var(--spacer-1);
+    }
+    .row-spread {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--spacer-1);
+    }
+    .muted {
+      color: var(--figma-color-text-secondary, #888);
+      font-size: 11px;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-dot.ok { background: #14ae5c; }
+    .status-dot.bad { background: #f24822; }
+    .status-dot.pending { background: #ffc700; }
+    .empty-state {
+      padding: var(--spacer-2) 0;
+      text-align: center;
+    }
+    .preview-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      background: var(--figma-color-bg-secondary, #2c2c2c);
+      border-radius: 4px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .preview-wrap img,
+    .preview-wrap video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .preview-placeholder {
+      font-size: 11px;
+      color: var(--figma-color-text-secondary, #aaa);
+    }
+    .media-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--spacer-1);
+      margin-top: var(--spacer-1);
+    }
+    .media-bar fig-button { flex-shrink: 0; }
+    .elapsed {
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      min-width: 40px;
+    }
+    .elapsed.recording { color: #f24822; }
+    .meter {
+      flex: 1;
+      height: 6px;
+      background: var(--figma-color-bg-secondary, #333);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .meter-fill {
+      height: 100%;
+      width: 0%;
+      background: #0d99ff;
+      transition: width 80ms linear;
+    }
+    .cue-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacer-1);
+      max-height: 160px;
+      overflow-y: auto;
+    }
+    .cue-row {
+      display: grid;
+      grid-template-columns: 44px 1fr 28px;
+      gap: var(--spacer-1);
+      align-items: center;
+    }
+    .cue-time {
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      padding: 2px 4px;
+      border: 1px solid var(--figma-color-border, #444);
+      border-radius: 3px;
+      text-align: center;
+    }
+    .cue-row.stale .cue-time {
+      border-color: #f24822;
+      color: #f24822;
+    }
+    .cue-row.selected {
+      outline: 1px solid #0d99ff;
+      border-radius: 4px;
+    }
+    .footer-row {
+      display: flex;
+      justify-content: flex-end;
+      gap: var(--spacer-1);
+      margin-top: var(--spacer-1);
+    }
+    .inline-status {
+      font-size: 11px;
+      color: var(--figma-color-text-secondary, #888);
+      min-height: 14px;
+    }
+    .inline-status.error { color: #f24822; }
+    .inline-status.ok { color: #14ae5c; }
+    .hidden { display: none !important; }
+    fig-input-text { width: 100%; }
+    fig-field { width: 100%; }
+  </style>
+</head>
+<body>
+  <div class="row-spread">
+    <div class="row">
+      <span id="connDot" class="status-dot pending"></span>
+      <span id="connLabel" class="muted">Connecting…</span>
+    </div>
+    <fig-button id="retryBtn" type="secondary" size="small" class="hidden">Retry</fig-button>
+  </div>
+
+  <div id="disconnectedPanel" class="empty-state hidden">
+    <p class="muted">Framecast companion app is not running.</p>
+    <fig-button id="retryBtn2" type="secondary">Retry</fig-button>
+  </div>
+
+  <div id="mainPanel" class="hidden">
+    <fig-segmented-control id="viewTabs" value="record">
+      <fig-segment value="record">Record</fig-segment>
+      <fig-segment value="sessions">Sessions</fig-segment>
+    </fig-segmented-control>
+
+    <div id="recordView">
+      <fig-field label="Session title">
+        <fig-input-text id="sessionTitle" placeholder="Design walkthrough"></fig-input-text>
+      </fig-field>
+
+      <div id="deviceSection" class="hidden">
+        <fig-field label="Camera">
+          <fig-dropdown id="cameraSelect"></fig-dropdown>
+        </fig-field>
+        <fig-field label="Microphone">
+          <fig-dropdown id="micSelect"></fig-dropdown>
+        </fig-field>
+      </div>
+
+      <div class="muted">Video</div>
+      <div class="preview-wrap" id="previewWrap">
+        <span class="preview-placeholder" id="previewPlaceholder">No preview</span>
+        <video id="previewVideo" class="hidden" muted playsinline></video>
+        <img id="previewImg" class="hidden" alt="" />
+      </div>
+
+      <div class="media-bar">
+        <fig-button id="recordBtn" type="primary" size="small">Record</fig-button>
+        <fig-button id="stopBtn" type="secondary" size="small" disabled>Stop</fig-button>
+        <span id="elapsed" class="elapsed">00:00</span>
+        <div class="meter" title="Audio level"><div id="meterFill" class="meter-fill"></div></div>
+      </div>
+
+      <div class="row-spread">
+        <span class="muted">Cues · <span id="cueCount">0</span></span>
+        <fig-switch id="autoStamp">Auto-stamp selection</fig-switch>
+      </div>
+      <div class="muted" id="cueTargetLabel">No cue target</div>
+
+      <fig-button id="addCueBtn" type="secondary" disabled>Add cue</fig-button>
+
+      <div id="cueList" class="cue-list"></div>
+    </div>
+
+    <div id="sessionsView" class="hidden">
+      <fig-field label="Latest session">
+        <fig-input-text id="playbackUrl" readonly placeholder="No session yet"></fig-input-text>
+      </fig-field>
+      <div class="row">
+        <fig-button id="openPlayerBtn" type="secondary" disabled>Open player</fig-button>
+        <fig-button id="copyUrlBtn" type="secondary" size="small" disabled>Copy URL</fig-button>
+      </div>
+      <fig-button id="generateBoardBtn" type="primary" disabled>Generate cue board</fig-button>
+    </div>
+
+    <div id="statusLine" class="inline-status"></div>
+
+    <div class="footer-row">
+      <fig-button id="saveBtn" type="primary" disabled>Save</fig-button>
+    </div>
+  </div>
+
+  <script>
+<!-- FIGUI3_JS -->
+</script>
+  <script>
+    const BASE = 'http://localhost:49888';
+    const WS_URL = 'ws://localhost:49888/events';
+
+    /** @type {import('@figma/plugin-typings').PluginAPI} */
+    const parent = window.parent;
+
+    let prefs = { autoStamp: true };
+    let cueTarget = null;
+    let cues = [];
+    let selectedCueId = null;
+    let sessionId = null;
+    let localPlaybackUrl = '';
+    let sessionTitle = 'Design walkthrough';
+    let recording = false;
+    let elapsedSeconds = 0;
+    let ws = null;
+    let healthTimer = null;
+    let bootstrapped = false;
+    let connected = false;
+    let lastStampNodeId = '';
+    let lastStampAt = 0;
+    let devices = { cameras: [], microphones: [] };
+
+    const $ = (id) => document.getElementById(id);
+
+    function uuid() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    }
+
+    function formatTime(seconds) {
+      const total = Math.max(0, Math.floor(seconds));
+      const m = Math.floor(total / 60);
+      const s = total % 60;
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    function setStatus(text, kind) {
+      const el = $('statusLine');
+      el.textContent = text || '';
+      el.className = 'inline-status' + (kind ? ' ' + kind : '');
+    }
+
+    function post(msg) {
+      parent.postMessage({ pluginMessage: msg }, '*');
+    }
+
+    function measurePanelHeight() {
+      requestAnimationFrame(() => {
+        const h = Math.ceil(document.body.scrollHeight + 8);
+        post({ type: 'resize', height: h });
+      });
+    }
+
+    function setConnection(ok, label) {
+      connected = ok;
+      $('connDot').className = 'status-dot ' + (ok ? 'ok' : 'bad');
+      $('connLabel').textContent = label;
+      $('retryBtn').classList.toggle('hidden', ok);
+      $('disconnectedPanel').classList.toggle('hidden', ok);
+      $('mainPanel').classList.toggle('hidden', !ok);
+      measurePanelHeight();
+    }
+
+    async function fetchJson(path, options) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      try {
+        const res = await fetch(BASE + path, {
+          ...options,
+          signal: controller.signal,
+          headers: { 'Content-Type': 'application/json', ...(options && options.headers) },
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    async function checkHealth() {
+      try {
+        await fetchJson('/health');
+        setConnection(true, 'Connected');
+        return true;
+      } catch {
+        setConnection(false, 'Disconnected');
+        return false;
+      }
+    }
+
+    async function loadDevices() {
+      try {
+        const data = await fetchJson('/devices');
+        devices = {
+          cameras: Array.isArray(data.cameras) ? data.cameras : [],
+          microphones: Array.isArray(data.microphones) ? data.microphones : [],
+        };
+        if (devices.cameras.length || devices.microphones.length) {
+          $('deviceSection').classList.remove('hidden');
+          fillDropdown($('cameraSelect'), devices.cameras, prefs.cameraId);
+          fillDropdown($('micSelect'), devices.microphones, prefs.micId);
+        }
+      } catch {
+        /* defaults */
+      }
+      measurePanelHeight();
+    }
+
+    function fillDropdown(el, items, selectedId) {
+      el.innerHTML = '';
+      items.forEach((item) => {
+        const opt = document.createElement('fig-option');
+        opt.setAttribute('value', item.id);
+        opt.textContent = item.label || item.name || item.id;
+        el.appendChild(opt);
+      });
+      if (selectedId) el.value = selectedId;
+      else if (items[0]) el.value = items[0].id;
+    }
+
+    function connectWebSocket() {
+      if (ws) {
+        try { ws.close(); } catch (_) {}
+        ws = null;
+      }
+      try {
+        ws = new WebSocket(WS_URL);
+        ws.onmessage = (ev) => {
+          try {
+            const data = JSON.parse(ev.data);
+            handleWsEvent(data);
+          } catch (_) {}
+        };
+        ws.onerror = () => setStatus('WebSocket unavailable — HTTP controls still work.', 'error');
+        ws.onclose = () => {
+          if (connected) setStatus('Connection lost', 'error');
+        };
+      } catch {
+        setStatus('WebSocket unavailable — HTTP controls still work.', 'error');
+      }
+    }
+
+    function handleWsEvent(data) {
+      if (!data || !data.type) return;
+      if (data.type === 'status') {
+        recording = !!data.recording;
+        if (data.sessionId) sessionId = data.sessionId;
+        updateRecordingUi();
+      }
+      if (data.type === 'audioLevel' && typeof data.level === 'number') {
+        $('meterFill').style.width = Math.min(100, Math.max(0, data.level * 100)) + '%';
+      }
+      if (data.type === 'elapsed' && typeof data.seconds === 'number') {
+        elapsedSeconds = data.seconds;
+        $('elapsed').textContent = formatTime(elapsedSeconds);
+      }
+      if (data.type === 'sessionReady') {
+        recording = false;
+        sessionId = data.sessionId || sessionId;
+        localPlaybackUrl = data.localPlaybackUrl || '';
+        if (data.previewUrl) setPreviewUrl(data.previewUrl);
+        onSessionReady();
+      }
+      if (data.type === 'error' && data.message) {
+        setStatus(data.message, 'error');
+      }
+    }
+
+    function updateRecordingUi() {
+      $('recordBtn').disabled = recording;
+      $('stopBtn').disabled = !recording;
+      $('elapsed').classList.toggle('recording', recording);
+      $('saveBtn').disabled = recording || !localPlaybackUrl;
+      $('addCueBtn').disabled = !recording || !cueTarget;
+      measurePanelHeight();
+    }
+
+    function updateCueTargetLabel() {
+      const el = $('cueTargetLabel');
+      if (!cueTarget) {
+        el.textContent = 'No cue target — select a frame, section, or component';
+      } else {
+        el.textContent = `# ${cueTarget.title}`;
+      }
+      $('addCueBtn').disabled = !recording || !cueTarget;
+      measurePanelHeight();
+    }
+
+    function renderCueList() {
+      const list = $('cueList');
+      list.innerHTML = '';
+      cues.forEach((cue) => {
+        const row = document.createElement('div');
+        row.className = 'cue-row' + (cue.stale ? ' stale' : '') + (cue.id === selectedCueId ? ' selected' : '');
+        row.innerHTML = `
+          <span class="cue-time">${formatTime(cue.time)}</span>
+          <fig-input-text data-cue-id="${cue.id}" value="${escapeAttr(cue.title)}"></fig-input-text>
+          <fig-button type="secondary" size="small" data-target="${cue.id}" title="Go to frame">◎</fig-button>
+        `;
+        list.appendChild(row);
+      });
+      $('cueCount').textContent = String(cues.length);
+
+      list.querySelectorAll('fig-input-text').forEach((input) => {
+        input.addEventListener('change', () => {
+          const id = input.getAttribute('data-cue-id');
+          const cue = cues.find((c) => c.id === id);
+          if (cue) cue.title = input.value;
+          persistSession();
+        });
+      });
+      list.querySelectorAll('fig-button[data-target]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-target');
+          const cue = cues.find((c) => c.id === id);
+          if (!cue) return;
+          selectedCueId = id;
+          renderCueList();
+          if (cue.stale) {
+            post({ type: 'relinkCue', cueId: id });
+          } else {
+            post({ type: 'replayCue', nodeId: cue.nodeId, cueId: id });
+          }
+        });
+      });
+      measurePanelHeight();
+    }
+
+    function escapeAttr(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    }
+
+    async function stampCue(eventSource) {
+      if (!recording || !sessionId || !cueTarget) return;
+      const now = Date.now();
+      if (cueTarget.nodeId === lastStampNodeId && now - lastStampAt < 1000) return;
+      lastStampNodeId = cueTarget.nodeId;
+      lastStampAt = now;
+
+      const cue = {
+        id: uuid(),
+        time: elapsedSeconds,
+        nodeId: cueTarget.nodeId,
+        nodeName: cueTarget.nodeName,
+        pageName: cueTarget.pageName,
+        title: cueTarget.title,
+        note: '',
+        eventSource,
+      };
+
+      try {
+        await fetchJson(`/recordings/${sessionId}/cues`, {
+          method: 'POST',
+          body: JSON.stringify(cue),
+        });
+        cues.push(cue);
+        renderCueList();
+        setStatus(`Cue at ${formatTime(cue.time)}`, 'ok');
+      } catch {
+        setStatus('Cue send failed', 'error');
+      }
+    }
+
+    function onSessionReady() {
+      $('playbackUrl').value = localPlaybackUrl;
+      $('openPlayerBtn').disabled = !localPlaybackUrl;
+      $('copyUrlBtn').disabled = !localPlaybackUrl;
+      $('generateBoardBtn').disabled = !localPlaybackUrl || cues.length === 0;
+      $('saveBtn').disabled = false;
+      updateRecordingUi();
+      persistSession();
+      setStatus('Session ready', 'ok');
+      measurePanelHeight();
+    }
+
+    function persistSession() {
+      if (!sessionId || !localPlaybackUrl) return;
+      post({
+        type: 'saveSession',
+        session: {
+          sessionId,
+          localPlaybackUrl,
+          sessionTitle,
+          cues: cues.map((c) => ({ ...c })),
+        },
+      });
+    }
+
+    function persistPrefs() {
+      post({
+        type: 'savePrefs',
+        prefs: {
+          autoStamp: prefs.autoStamp,
+          cameraId: $('cameraSelect').value || prefs.cameraId,
+          micId: $('micSelect').value || prefs.micId,
+          sessionTitle,
+        },
+      });
+    }
+
+    async function startRecording() {
+      sessionTitle = $('sessionTitle').value.trim() || sessionTitle;
+      persistPrefs();
+      setStatus('Starting…');
+      try {
+        const body = {
+          title: sessionTitle,
+          cameraId: $('cameraSelect').value || prefs.cameraId,
+          microphoneId: $('micSelect').value || prefs.micId,
+        };
+        const data = await fetchJson('/recordings/start', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        sessionId = data.sessionId;
+        recording = true;
+        elapsedSeconds = 0;
+        cues = [];
+        localPlaybackUrl = '';
+        if (data.previewUrl) setPreviewUrl(data.previewUrl);
+        lastStampNodeId = '';
+        lastStampAt = 0;
+        $('elapsed').textContent = '00:00';
+        renderCueList();
+        updateRecordingUi();
+        setStatus('Recording', 'ok');
+      } catch {
+        setStatus('Start recording failed', 'error');
+      }
+    }
+
+    async function stopRecording() {
+      if (!sessionId) return;
+      setStatus('Stopping…');
+      try {
+        const data = await fetchJson(`/recordings/${sessionId}/stop`, { method: 'POST', body: '{}' });
+        recording = false;
+        if (data.localPlaybackUrl) localPlaybackUrl = data.localPlaybackUrl;
+        if (data.sessionId) sessionId = data.sessionId;
+        updateRecordingUi();
+        onSessionReady();
+      } catch {
+        setStatus('Stop recording failed', 'error');
+      }
+    }
+
+    function setPreviewUrl(url) {
+      if (!url) return;
+      const video = $('previewVideo');
+      const img = $('previewImg');
+      $('previewPlaceholder').classList.add('hidden');
+      if (/\.(mp4|webm|mov)(\?|$)/i.test(url)) {
+        video.src = url;
+        video.classList.remove('hidden');
+        img.classList.add('hidden');
+      } else {
+        img.src = url;
+        img.classList.remove('hidden');
+        video.classList.add('hidden');
+      }
+    }
+
+    function openPlayer() {
+      if (!localPlaybackUrl) {
+        setStatus('Local player URL missing', 'error');
+        return;
+      }
+      post({ type: 'openExternal', url: localPlaybackUrl });
+      setStatus('Opening player…', 'ok');
+    }
+
+    async function initFromPlugin(ev) {
+      if (!ev.data || !ev.data.pluginMessage) return;
+      const msg = ev.data.pluginMessage;
+
+      if (msg.type === 'companionHealth') {
+        if (msg.ok) {
+          void bootstrap(true);
+        } else if (!bootstrapped) {
+          setConnection(false, 'Disconnected');
+        }
+        return;
+      }
+
+      if (msg.type === 'init') {
+        prefs = msg.prefs || prefs;
+        sessionTitle = prefs.sessionTitle || msg.pageName || 'Design walkthrough';
+        $('sessionTitle').value = sessionTitle;
+        if ($('autoStamp')) $('autoStamp').checked = prefs.autoStamp !== false;
+
+        if (msg.session) {
+          sessionId = msg.session.sessionId;
+          localPlaybackUrl = msg.session.localPlaybackUrl;
+          sessionTitle = msg.session.sessionTitle || sessionTitle;
+          cues = (msg.session.cues || []).map((c) => ({ ...c }));
+          $('sessionTitle').value = sessionTitle;
+          onSessionReady();
+          renderCueList();
+        }
+        measurePanelHeight();
+      }
+
+      if (msg.type === 'cueTarget') {
+        cueTarget = msg.target;
+        updateCueTargetLabel();
+        if (recording && prefs.autoStamp && cueTarget) {
+          void stampCue('selectionchange');
+        }
+      }
+
+      if (msg.type === 'replayResult') {
+        const cue = cues.find((c) => c.id === msg.cueId);
+        if (cue && msg.stale) {
+          cue.stale = true;
+          renderCueList();
+          persistSession();
+        }
+      }
+
+      if (msg.type === 'relinkResult') {
+        const cue = cues.find((c) => c.id === msg.cueId);
+        if (cue && msg.target) {
+          cue.nodeId = msg.target.nodeId;
+          cue.nodeName = msg.target.nodeName;
+          cue.pageName = msg.target.pageName;
+          cue.title = msg.target.title;
+          cue.stale = false;
+          renderCueList();
+          persistSession();
+          setStatus('Cue relinked', 'ok');
+        }
+      }
+
+      if (msg.type === 'cueBoardCreated') {
+        setStatus('Cue board on canvas', 'ok');
+      }
+    }
+
+    function bindUi() {
+      $('retryBtn').addEventListener('click', () => void bootstrap());
+      $('retryBtn2').addEventListener('click', () => void bootstrap());
+
+      $('viewTabs').addEventListener('change', () => {
+        const v = $('viewTabs').value;
+        $('recordView').classList.toggle('hidden', v !== 'record');
+        $('sessionsView').classList.toggle('hidden', v !== 'sessions');
+        measurePanelHeight();
+      });
+
+      $('sessionTitle').addEventListener('change', () => {
+        sessionTitle = $('sessionTitle').value.trim() || sessionTitle;
+        persistPrefs();
+      });
+
+      $('autoStamp').addEventListener('change', () => {
+        prefs.autoStamp = $('autoStamp').checked;
+        persistPrefs();
+      });
+
+      $('cameraSelect').addEventListener('change', persistPrefs);
+      $('micSelect').addEventListener('change', persistPrefs);
+
+      $('recordBtn').addEventListener('click', () => void startRecording());
+      $('stopBtn').addEventListener('click', () => void stopRecording());
+      $('addCueBtn').addEventListener('click', () => void stampCue('manual'));
+
+      $('openPlayerBtn').addEventListener('click', openPlayer);
+      $('copyUrlBtn').addEventListener('click', async () => {
+        if (!localPlaybackUrl) return;
+        try {
+          await navigator.clipboard.writeText(localPlaybackUrl);
+          setStatus('URL copied', 'ok');
+        } catch {
+          $('playbackUrl').select();
+          setStatus('Select URL to copy', '');
+        }
+      });
+
+      $('generateBoardBtn').addEventListener('click', () => {
+        post({
+          type: 'generateCueBoard',
+          session: {
+            sessionId,
+            localPlaybackUrl,
+            sessionTitle,
+            cues: cues.map((c) => ({ ...c })),
+          },
+        });
+      });
+
+      $('saveBtn').addEventListener('click', () => {
+        persistSession();
+        setStatus('Session saved', 'ok');
+      });
+
+      window.addEventListener('message', initFromPlugin);
+
+      const ro = new ResizeObserver(measurePanelHeight);
+      ro.observe(document.body);
+    }
+
+    async function finishBootstrap() {
+      if (bootstrapped) return;
+      bootstrapped = true;
+      setConnection(true, 'Connected');
+      await loadDevices();
+      connectWebSocket();
+      post({ type: 'getInit' });
+      if (!healthTimer) {
+        healthTimer = setInterval(async () => {
+          const alive = await checkHealth();
+          if (!alive && recording) setStatus('Connection lost while recording', 'error');
+        }, 10000);
+      }
+    }
+
+    async function bootstrap(fromSandbox) {
+      if (!fromSandbox) {
+        setConnection(false, 'Connecting…');
+        const ok = await checkHealth();
+        if (!ok) return;
+      }
+      await finishBootstrap();
+    }
+
+    function startApp() {
+      bindUi();
+      void bootstrap(false);
+      measurePanelHeight();
+      customElements.whenDefined('fig-button').then(measurePanelHeight).catch(() => {});
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', startApp);
+    } else {
+      startApp();
+    }
+  </script>
+</body>
+</html>

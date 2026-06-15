@@ -1,0 +1,29 @@
+{
+  "name": "Template",
+  "id": "template",
+  "api": "1.0.0",
+  "main": "src/code.js",
+  "ui": "src/ui.html",
+  "editorType": [
+    "figma"
+  ],
+  "networkAccess": {
+    "allowedDomains": [
+      "*"
+    ],
+    "reasoning": "Generated tools may call public open HTTP APIs that do not require API keys or user authentication."
+  },
+  "documentAccess": "dynamic-page",
+  "relaunchButtons": [
+    {
+      "command": "regenerate",
+      "name": "Regenerate",
+      "multipleSelection": false
+    },
+    {
+      "command": "edit",
+      "name": "Edit",
+      "multipleSelection": false
+    }
+  ]
+}

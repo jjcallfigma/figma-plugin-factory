@@ -83,20 +83,51 @@
     margin: 0;
   }
 
-  .csv-field {
-    padding: 0 var(--spacer-3) var(--spacer-1);
+  /* fig-field supplies horizontal inset; zero fig-tabs side padding so tabs line up with panels. */
+  fig-field > fig-tabs {
+    width: 100%;
+    box-sizing: border-box;
+    padding-left: 0;
+    padding-right: 0;
+    margin: 0;
   }
 
-  .csv-field fig-input-text {
+  fig-field > fig-tabs > fig-tab {
+    flex: 0 0 auto;
+    justify-content: center;
+    min-width: 4.5rem;
+  }
+
+  .data-panel fig-input-text {
     width: 100%;
   }
 
-  .csv-field fig-input-text textarea {
+  .data-panel fig-input-text textarea {
     min-height: 96px;
     resize: vertical;
     font-family: var(--font-family);
     font-size: var(--body-small-fontSize);
     line-height: 1.35;
+  }
+
+  .upload-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacer-2);
+    min-height: 96px;
+    justify-content: center;
+  }
+
+  .upload-panel fig-input-file {
+    width: 100%;
+  }
+
+  .upload-status {
+    margin: 0;
+    font-size: var(--body-small-fontSize);
+    line-height: var(--body-small-lineHeight);
+    color: var(--figma-color-text-secondary);
+    word-break: break-word;
   }
 
   dialog.fig-fill-picker-dialog {
@@ -157,8 +188,24 @@
 
   <fig-group>
     <fig-header borderless><h3>Data</h3></fig-header>
-    <div class="csv-field">
-      <fig-input-text id="csvData" multiline="true" placeholder="artist,stage,time,day,section,image_url"></fig-input-text>
+    <fig-field>
+      <fig-tabs id="csvInputTabs" value="paste">
+        <fig-tab value="paste" content="#panelPaste" selected>Paste</fig-tab>
+        <fig-tab value="upload" content="#panelUpload">Upload</fig-tab>
+      </fig-tabs>
+    </fig-field>
+    <div id="panelPaste" class="data-panel">
+      <fig-field>
+        <fig-input-text id="csvData" multiline="true" placeholder="artist,stage,time,day,section,image_url"></fig-input-text>
+      </fig-field>
+    </div>
+    <div id="panelUpload" class="data-panel upload-panel">
+      <fig-field>
+        <fig-input-file id="csvFile" accepts=".csv,text/csv,text/plain" label="Choose CSV file"></fig-input-file>
+      </fig-field>
+      <fig-field>
+        <p id="uploadStatus" class="upload-status">No file selected</p>
+      </fig-field>
     </div>
     <fig-field direction="horizontal" columns="thirds">
       <label for="autoFindImages">Auto-find images</label>
@@ -243,6 +290,7 @@
   var lastReportedHeight = 0;
   var resizeRaf = 0;
   var outputSelected = false;
+  var uploadedFileName = null;
 
   var SAMPLE_CSV = 'artist,stage,time,day,section,image_url\n' +
     'Tame Impala,Main Stage,10:00 PM,Friday,Headliners,\n' +
@@ -320,9 +368,45 @@
     el.value = value == null ? '' : String(value);
   }
 
+  function getActiveCsvInputMode() {
+    return document.getElementById('csvInputTabs').value || 'paste';
+  }
+
+  function countCsvRows(csvText) {
+    var lines = String(csvText || '').trim().split(/\r?\n/).filter(Boolean);
+    return Math.max(0, lines.length - 1);
+  }
+
+  function updateUploadStatus(fileName, csvText) {
+    var status = document.getElementById('uploadStatus');
+    if (!fileName) {
+      status.textContent = 'No file selected';
+      return;
+    }
+    var rows = countCsvRows(csvText);
+    status.textContent = fileName + ' · ' + rows + ' row' + (rows === 1 ? '' : 's');
+  }
+
+  function setCsvInputMode(mode) {
+    var tabs = document.getElementById('csvInputTabs');
+    tabs.value = mode;
+    tabs.setAttribute('value', mode);
+    reportPanelHeight();
+  }
+
+  function setUploadedFileName(name) {
+    var fileInput = document.getElementById('csvFile');
+    uploadedFileName = name || null;
+    if (uploadedFileName) fileInput.setAttribute('filename', uploadedFileName);
+    else fileInput.removeAttribute('filename');
+  }
+
   function getStateFromForm() {
+    var csvData = String(readValue(document.getElementById('csvData')) || SAMPLE_CSV);
     return {
-      csvData: String(readValue(document.getElementById('csvData')) || SAMPLE_CSV),
+      csvData: csvData,
+      csvInputMode: getActiveCsvInputMode(),
+      uploadedFileName: uploadedFileName,
       columns: Number(readValue(document.getElementById('columns')) || 3),
       gap: Number(readValue(document.getElementById('gap')) || 16),
       cardSize: String(readValue(document.getElementById('cardSize')) || 'headliner'),
@@ -338,6 +422,9 @@
 
   function setStateInForm(state) {
     writeValue(document.getElementById('csvData'), state.csvData || SAMPLE_CSV);
+    setCsvInputMode(state.csvInputMode || 'paste');
+    setUploadedFileName(state.uploadedFileName || null);
+    updateUploadStatus(state.uploadedFileName || null, state.csvData || SAMPLE_CSV);
     writeValue(document.getElementById('columns'), state.columns);
     writeValue(document.getElementById('gap'), state.gap);
     writeValue(document.getElementById('cardSize'), state.cardSize);
@@ -371,8 +458,39 @@
     customElements.whenDefined('fig-switch'),
     customElements.whenDefined('fig-button'),
     customElements.whenDefined('fig-footer'),
+    customElements.whenDefined('fig-tabs'),
+    customElements.whenDefined('fig-tab'),
+    customElements.whenDefined('fig-input-file'),
   ]).then(function () {
     writeValue(document.getElementById('csvData'), SAMPLE_CSV);
+    setCsvInputMode('paste');
+    setUploadedFileName(null);
+    updateUploadStatus(null, SAMPLE_CSV);
+
+    document.getElementById('csvInputTabs').addEventListener('click', function () {
+      requestAnimationFrame(reportPanelHeight);
+    });
+
+    document.getElementById('csvFile').addEventListener('change', function () {
+      var fileInput = document.getElementById('csvFile');
+      var file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+
+      var reader = new FileReader();
+      reader.onload = function () {
+        var csvText = String(reader.result || '');
+        setUploadedFileName(file.name);
+        writeValue(document.getElementById('csvData'), csvText);
+        updateUploadStatus(uploadedFileName, csvText);
+        reportPanelHeight();
+        fireRegenerate();
+      };
+      reader.onerror = function () {
+        setUploadedFileName(null);
+        updateUploadStatus(null, '');
+      };
+      reader.readAsText(file);
+    });
 
     bindCommitFire(document.getElementById('csvData'));
     bindCommitFire(document.getElementById('columns'));

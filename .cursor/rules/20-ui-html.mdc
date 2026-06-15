@@ -20,7 +20,7 @@ The plugin UI runs in a Figma iframe. PropsKit controls are **[FigUI3](https://r
 
 `{pluginRoot}` is `template/` or `plugins/<slug>/` per `plugins/.active` (see `AGENTS.md`).
 
-After UI changes: run `npm run dev` while editing, or `npm run bundle-ui` / `npm run build` for a one-off, then re-run in Figma.
+After UI changes: run `npm run dev` while editing, or `npm run bundle-ui` / `npm run build` for a one-off. **Always run `npm run build` in `{pluginRoot}` as the final step** before declaring done — Figma loads `ui.html`, not `ui.template.html`. Tell the user to re-run the tool in Figma after the build.
 
 ## Required behavior
 
@@ -64,8 +64,9 @@ window.onmessage = function (event) {
 - Do not use ES module `import` for FigUI3.
 - Do not add `body` padding — panel is edge-to-edge.
 - Do not put section separator pseudo-elements inside `fig-header` (it is a horizontal flex row — titles will clip).
-- Do not use segmented controls. Use `<fig-dropdown>`.
-- Do not introduce tabs, wizards, or modals.
+- Default enums to `<fig-dropdown>`, not `<fig-segmented-control>`, unless the prompt asks for segments.
+- Do not build tab bars from styled `<fig-button>` pairs — use `<fig-tabs>` + `<fig-tab>` when a section needs input modes (paste/upload). No multi-step wizards or modals.
+- Do not use hidden file inputs + secondary buttons when `<fig-input-file>` fits.
 - Do not bind `input` events on sliders.
 - Do not post `regenerate` on control change when no tool output is selected — that stacks orphan frames.
 - Do not remove or rewrite the color-picker CSS block when using `<fig-input-color>`.
@@ -74,5 +75,5 @@ window.onmessage = function (event) {
 ## Reference
 
 - **Layout + spacing:** `docs/08-figui3-ui.md`, `template/src/ui.template.html`
-- **Control catalog:** `docs/02-propskit-reference.md`
+- **Control catalog:** `docs/02-propskit-reference.md`, `docs/08-figui3-ui.md > Bundled component catalog`, `.cursor/skills/figui3-catalog/SKILL.md`
 - **Figma panel spec:** [Generative tools effects](https://staging.figma.com/design/ChG6473qlBtfrv8VYx1jaR/Generative-tools-effects?node-id=17850-75051)

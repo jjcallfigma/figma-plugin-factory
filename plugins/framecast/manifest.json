@@ -1,0 +1,30 @@
+{
+  "name": "Framecast",
+  "id": "framecast",
+  "api": "1.0.0",
+  "main": "src/code.js",
+  "ui": "src/ui.html",
+  "editorType": [
+    "figma"
+  ],
+  "networkAccess": {
+    "allowedDomains": [
+      "http://localhost:49888",
+      "ws://localhost:49888"
+    ],
+    "reasoning": "Framecast connects to a local macOS companion app for recording and playback."
+  },
+  "documentAccess": "dynamic-page",
+  "relaunchButtons": [
+    {
+      "command": "open",
+      "name": "Open Framecast",
+      "multipleSelection": false
+    },
+    {
+      "command": "edit-board",
+      "name": "Edit cue board",
+      "multipleSelection": false
+    }
+  ]
+}
